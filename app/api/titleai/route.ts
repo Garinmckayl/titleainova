@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
         let county = await lookupCounty(address);
         
         if (!county) {
-          county = { name: 'Unknown County', recorderUrl: '', searchUrl: '' };
+          county = { name: 'Unknown County', state: 'US', recorderUrl: '', searchUrl: '' };
           send({ type: 'progress', step: 'lookup', message: 'County not in list. Proceeding with general search...' });
         } else {
           send({ type: 'progress', step: 'lookup', message: `Found property in ${county.name}.` });

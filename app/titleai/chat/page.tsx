@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,9 @@ import { Home, Search } from "lucide-react";
 
 export default function TitleChatPage() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat();
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/titleai/chat' }),
+  });
   const isLoading = status === "streaming" || status === "submitted";
 
   const handleSubmit = async (e: React.FormEvent) => {

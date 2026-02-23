@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,18 +19,24 @@ export const metadata: Metadata = {
     "AI-powered title search for Texas properties. Chain of title, lien detection, risk assessment in seconds. Powered by Amazon Nova Act & Nova Pro.",
 };
 
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
+  const body = (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>
   );
+
+  if (clerkEnabled) {
+    return <ClerkProvider>{body}</ClerkProvider>;
+  }
+
+  return body;
 }

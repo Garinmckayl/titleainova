@@ -55,7 +55,7 @@ export const titleSearchJob = inngest.createFunction(
         log: `Retrieving records for ${county.name}...`,
       });
 
-      const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
+      const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
       let novaActData: any = null;
       const screenshots: ScreenshotRecord[] = [];
 

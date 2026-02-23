@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
+  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
 
   // Pipe the upstream SSE stream straight through to the client.
   let upstreamRes: Response;

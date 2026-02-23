@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
 import { buildChainOfTitle, detectLiens, assessRisk, generateSummary } from '@/lib/agents/title-search/analysis';
@@ -19,7 +20,11 @@ async function streamNovaActSearch(
   send: (data: any) => void,
   collectedScreenshots: ScreenshotRecord[],
 ): Promise<any | null> {
-  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
+  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
+  if (!sidecarUrl) {
+    send({ type: 'log', step: 'retrieval', message: 'Nova Act service not configured — using web search fallback.' });
+    return null;
+  }
 
   let upstreamRes: Response;
   try {
@@ -75,6 +80,7 @@ async function streamNovaActSearch(
 }
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth();
   const { address } = await req.json();
   const encoder = new TextEncoder();
 
@@ -170,6 +176,7 @@ export async function POST(req: NextRequest) {
           novaActData?.source ?? 'web_search',
           reportData,
           collectedScreenshots,
+          userId,
         ).catch((err) => console.error('[Turso] saveSearch failed:', err));
 
         send({ type: 'result', data: { ...reportData, pdfBase64 } });

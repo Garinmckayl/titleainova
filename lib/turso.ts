@@ -25,6 +25,7 @@ async function ensureTable() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS title_searches (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    TEXT,
       address    TEXT NOT NULL,
       county     TEXT NOT NULL,
       parcel_id  TEXT,
@@ -34,11 +35,13 @@ async function ensureTable() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-  // Migrate: add screenshots column to existing tables that lack it
-  try {
-    await db.execute(`ALTER TABLE title_searches ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`);
-  } catch {
-    // Column already exists — ignore "duplicate column" error
+  // Migrate existing tables
+  const migrations = [
+    `ALTER TABLE title_searches ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE title_searches ADD COLUMN user_id TEXT`,
+  ];
+  for (const sql of migrations) {
+    try { await db.execute(sql); } catch { /* column already exists */ }
   }
 }
 
@@ -47,6 +50,7 @@ async function ensureJobsTable() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS title_jobs (
       id           TEXT PRIMARY KEY,
+      user_id      TEXT,
       address      TEXT NOT NULL,
       status       TEXT NOT NULL DEFAULT 'queued',
       current_step TEXT,
@@ -59,10 +63,12 @@ async function ensureJobsTable() {
       updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
-  try {
-    await db.execute(`ALTER TABLE title_jobs ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`);
-  } catch {
-    // Column already exists — ignore
+  const migrations = [
+    `ALTER TABLE title_jobs ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE title_jobs ADD COLUMN user_id TEXT`,
+  ];
+  for (const sql of migrations) {
+    try { await db.execute(sql); } catch { /* column already exists */ }
   }
 }
 
@@ -118,25 +124,32 @@ export async function saveSearch(
   source: string | null,
   report: object,
   screenshots: ScreenshotRecord[] = [],
+  userId: string | null = null,
 ): Promise<number> {
   await ensureTable();
   const db = getClient();
   const rs = await db.execute({
-    sql: `INSERT INTO title_searches (address, county, parcel_id, source, report, screenshots)
-          VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-    args: [address, county, parcelId, source, JSON.stringify(report), JSON.stringify(screenshots)],
+    sql: `INSERT INTO title_searches (user_id, address, county, parcel_id, source, report, screenshots)
+          VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    args: [userId, address, county, parcelId, source, JSON.stringify(report), JSON.stringify(screenshots)],
   });
   return rs.rows[0].id as number;
 }
 
-export async function getRecentSearches(limit = 20): Promise<TitleSearchRow[]> {
+export async function getRecentSearches(limit = 20, userId: string | null = null): Promise<TitleSearchRow[]> {
   await ensureTable();
   const db = getClient();
-  const rs = await db.execute({
-    sql: `SELECT id, address, county, parcel_id, source, report, screenshots, created_at
-          FROM title_searches ORDER BY id DESC LIMIT ?`,
-    args: [limit],
-  });
+  const rs = userId
+    ? await db.execute({
+        sql: `SELECT id, address, county, parcel_id, source, report, screenshots, created_at
+              FROM title_searches WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
+        args: [userId, limit],
+      })
+    : await db.execute({
+        sql: `SELECT id, address, county, parcel_id, source, report, screenshots, created_at
+              FROM title_searches ORDER BY id DESC LIMIT ?`,
+        args: [limit],
+      });
   return rs.rows.map(r => ({
     id: r.id as number,
     address: r.address as string,
@@ -169,13 +182,13 @@ export async function getSearch(id: number): Promise<TitleSearchRow | null> {
 
 // ─── Durable Jobs CRUD ────────────────────────────────────────
 
-export async function createJob(id: string, address: string): Promise<void> {
+export async function createJob(id: string, address: string, userId: string | null = null): Promise<void> {
   await ensureJobsTable();
   const db = getClient();
   await db.execute({
-    sql: `INSERT INTO title_jobs (id, address, status, progress_pct, logs, screenshots)
-          VALUES (?, ?, 'queued', 0, '[]', '[]')`,
-    args: [id, address],
+    sql: `INSERT INTO title_jobs (id, user_id, address, status, progress_pct, logs, screenshots)
+          VALUES (?, ?, ?, 'queued', 0, '[]', '[]')`,
+    args: [id, userId, address],
   });
 }
 
@@ -249,13 +262,18 @@ export async function getJob(id: string): Promise<TitleJobRow | null> {
   };
 }
 
-export async function getRecentJobs(limit = 20): Promise<TitleJobRow[]> {
+export async function getRecentJobs(limit = 20, userId: string | null = null): Promise<TitleJobRow[]> {
   await ensureJobsTable();
   const db = getClient();
-  const rs = await db.execute({
-    sql: `SELECT * FROM title_jobs ORDER BY created_at DESC LIMIT ?`,
-    args: [limit],
-  });
+  const rs = userId
+    ? await db.execute({
+        sql: `SELECT * FROM title_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+        args: [userId, limit],
+      })
+    : await db.execute({
+        sql: `SELECT * FROM title_jobs ORDER BY created_at DESC LIMIT ?`,
+        args: [limit],
+      });
   return rs.rows.map(r => ({
     id: r.id as string,
     address: r.address as string,

@@ -1,4 +1,5 @@
 import { streamText, convertToModelMessages, tool, stepCountIs } from "ai";
+import { auth } from "@clerk/nextjs/server";
 import { novaPro } from "@/lib/bedrock";
 import { z } from "zod";
 import { getRecentSearches, getSearch, saveSearch, type ScreenshotRecord } from "@/lib/turso";
@@ -10,10 +11,10 @@ import { getMockDocs } from "@/lib/agents/title-search/mock";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-async function buildSystemPrompt(): Promise<string> {
+async function buildSystemPrompt(userId: string | null): Promise<string> {
   let searchContext = "";
   try {
-    const recent = await getRecentSearches(10);
+    const recent = await getRecentSearches(10, userId);
     if (recent.length > 0) {
       searchContext = `\n\n## Recent Title Searches in Database\nYou have access to ${recent.length} recent title searches:\n`;
       for (const s of recent) {
@@ -59,20 +60,22 @@ const searchTool = {
 
       let novaActData: any = null;
       const screenshots: ScreenshotRecord[] = [];
-      const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || "http://35.166.228.8:8001";
+      const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
 
-      try {
-        const res = await fetch(`${sidecarUrl}/search`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address, county: county.name }),
-          signal: AbortSignal.timeout(120_000),
-        });
-        if (res.ok) {
-          const json = await res.json();
-          novaActData = json.data || json;
-        }
-      } catch { /* sidecar unavailable */ }
+      if (sidecarUrl) {
+        try {
+          const res = await fetch(`${sidecarUrl}/search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address, county: county.name }),
+            signal: AbortSignal.timeout(120_000),
+          });
+          if (res.ok) {
+            const json = await res.json();
+            novaActData = json.data || json;
+          }
+        } catch { /* sidecar unavailable */ }
+      }
 
       let docs: any[] = [];
       if (novaActData) {
@@ -135,8 +138,9 @@ const getReportTool = {
 };
 
 export async function POST(req: Request) {
+  const { userId } = await auth();
   const { messages } = await req.json();
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(userId);
 
   const result = streamText({
     model: novaPro,

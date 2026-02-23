@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
+import { auth } from '@clerk/nextjs/server';
 import { inngest } from '@/lib/inngest';
 import { createJob, getJob, getRecentJobs, updateJob, type ScreenshotRecord } from '@/lib/turso';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
@@ -28,7 +29,7 @@ async function runDirectSearch(jobId: string, address: string) {
     await updateJob(jobId, { current_step: 'retrieval', progress_pct: 30, log: `Retrieving records for ${county.name}...` });
     const screenshots: ScreenshotRecord[] = [];
     let novaActData: any = null;
-    const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
+    const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
 
     try {
       const res = await fetch(`${sidecarUrl}/search-stream`, {
@@ -127,6 +128,9 @@ async function runDirectSearch(jobId: string, address: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   try {
     const { address } = await req.json();
     if (!address?.trim()) {
@@ -134,7 +138,7 @@ export async function POST(req: NextRequest) {
     }
 
     const jobId = nanoid(12);
-    await createJob(jobId, address.trim());
+    await createJob(jobId, address.trim(), userId);
 
     // Try Inngest first; if not configured, run directly
     const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
@@ -162,6 +166,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
 
@@ -173,7 +180,7 @@ export async function GET(req: NextRequest) {
     }
 
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10) || 20, 50);
-    const jobs = await getRecentJobs(limit);
+    const jobs = await getRecentJobs(limit, userId);
     return NextResponse.json({ success: true, data: jobs });
   } catch (err: any) {
     console.error('[/api/jobs GET]', err);

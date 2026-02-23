@@ -270,6 +270,28 @@ export function TitleSearchClient() {
         </Card>
       </motion.div>
 
+      {/* AgentCore live browser — shown whenever URL is available */}
+      {liveViewUrl && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-8 max-w-4xl mx-auto rounded-2xl overflow-hidden border border-slate-700 shadow-2xl"
+        >
+          <div className="bg-slate-900 px-4 py-2.5 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-slate-400 text-xs font-mono">AgentCore Browser Tool — Live Stream</span>
+            <span className="ml-auto text-slate-600 text-xs font-mono">bedrock-agentcore</span>
+          </div>
+          <iframe
+            src={liveViewUrl}
+            className="w-full border-0"
+            style={{ height: '340px' }}
+            sandbox="allow-scripts allow-same-origin"
+            title="Nova Act live browser"
+          />
+        </motion.div>
+      )}
+
       {/* Processing Steps + Live Terminal */}
       <AnimatePresence mode="wait">
         {(loading || (logs.length > 0 && !result)) && (
@@ -351,28 +373,8 @@ export function TitleSearchClient() {
                     exit={{ height: 0 }}
                     className="overflow-hidden"
                   >
-                    {/* AgentCore live browser stream */}
-                    {liveViewUrl && (
-                      <div className="bg-slate-900 border-b border-slate-800 p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                          <span className="text-slate-400 text-xs font-mono">
-                            AgentCore Browser Tool — Live Stream
-                          </span>
-                          <span className="ml-auto text-slate-600 text-xs font-mono">bedrock-agentcore</span>
-                        </div>
-                        <iframe
-                          src={liveViewUrl}
-                          className="w-full rounded-lg border border-slate-700"
-                          style={{ height: '280px' }}
-                          sandbox="allow-scripts allow-same-origin"
-                          title="Nova Act live browser"
-                        />
-                      </div>
-                    )}
-
-                    {/* Live browser screenshot (fallback when no live view) */}
-                    {!liveViewUrl && activeScreenshot && (
+                    {/* Live browser screenshot */}
+                     {activeScreenshot && (
                       <div className="bg-slate-900 border-b border-slate-800 p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />

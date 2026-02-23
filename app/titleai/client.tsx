@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   FileText, Search, ShieldCheck, AlertTriangle, Download, 
   CheckCircle2, Building2, MapPin, Loader2, ArrowRight, MessageSquare,
-  Terminal, ChevronDown, History
+  Terminal, ChevronDown, History, Monitor
 } from "lucide-react";
 import Link from "next/link";
 import type { TitleReportData, OwnershipNode, Lien, TitleException } from '@/lib/agents/title-search/types';
@@ -296,8 +296,8 @@ export function TitleSearchClient() {
         </motion.div>
       )}
 
-      {/* AgentCore live browser — shown whenever URL is available */}
-      {liveViewUrl && (
+      {/* AgentCore live browser — placeholder while screenshots load */}
+      {liveViewUrl && !activeScreenshot && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -305,16 +305,14 @@ export function TitleSearchClient() {
         >
           <div className="bg-slate-900 px-4 py-2.5 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-slate-400 text-xs font-mono">AgentCore Browser Tool — Live Stream</span>
+            <span className="text-slate-400 text-xs font-mono">AgentCore Browser Tool — Live Session</span>
             <span className="ml-auto text-slate-600 text-xs font-mono">bedrock-agentcore</span>
           </div>
-          <iframe
-            src={liveViewUrl}
-            className="w-full border-0"
-            style={{ height: '340px' }}
-            sandbox="allow-scripts allow-same-origin"
-            title="Nova Act live browser"
-          />
+          <div className="bg-slate-950 flex flex-col items-center justify-center py-16 text-slate-500">
+            <Monitor className="h-12 w-12 mb-4 animate-pulse" />
+            <p className="text-sm font-medium text-slate-400">AI agent is browsing county records...</p>
+            <p className="text-xs mt-1.5 text-slate-600">Live screenshots will appear in the terminal below</p>
+          </div>
         </motion.div>
       )}
 

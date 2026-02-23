@@ -6,7 +6,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileText, Home, History, Building2 } from "lucide-react";
+import { FileText, Home, History, Building2, Search, AlertTriangle, CheckCircle2, Loader2, MapPin } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Conversation,
@@ -30,10 +30,10 @@ import {
 } from "@/components/ai-elements/prompt-input";
 
 const STARTERS = [
-  { label: "Check for liens", q: "What liens are recorded against 1234 Oak Street, Houston TX?" },
-  { label: "Chain of title", q: "Who are the previous owners of 500 Elm Ave, Dallas TX?" },
-  { label: "Title risks", q: "Are there any title exceptions or encumbrances I should know about?" },
-  { label: "Deed requirements", q: "What are the requirements for a valid deed transfer in Texas?" },
+  { label: "Run a title search", q: "Run a title search on 1400 Smith St, Houston, TX 77002" },
+  { label: "Check for liens", q: "Search 500 Main Plaza, San Antonio, TX 78205 and tell me about any liens" },
+  { label: "Explain title insurance", q: "What is title insurance and why do I need it when buying a home?" },
+  { label: "Review past searches", q: "Show me what properties have already been searched" },
 ];
 
 export default function TitleChatPage() {
@@ -151,6 +151,128 @@ export default function TitleChatPage() {
                             {part.text}
                           </MessageResponse>
                         );
+                      }
+                      if (part.type === "tool-invocation") {
+                        const inv = part as any;
+                        const toolName = inv.toolInvocation?.toolName || inv.toolName;
+                        const state = inv.toolInvocation?.state || inv.state;
+                        const result = inv.toolInvocation?.result || inv.result;
+
+                        // Loading state
+                        if (state === "call" || state === "partial-call") {
+                          return (
+                            <div key={i} className="my-3 p-4 rounded-xl bg-yellow-50 border border-yellow-200 flex items-center gap-3">
+                              <Loader2 className="w-5 h-5 text-yellow-600 animate-spin shrink-0" />
+                              <div>
+                                <p className="font-semibold text-yellow-800 text-sm">
+                                  {toolName === "run_title_search" ? "Running Title Search..." : "Retrieving Report..."}
+                                </p>
+                                <p className="text-xs text-yellow-600">AI agents are working</p>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Result state
+                        if (state === "result" && result) {
+                          if (toolName === "run_title_search" && result.success) {
+                            const r = result;
+                            return (
+                              <div key={i} className="my-3 space-y-3">
+                                {/* Header */}
+                                <div className="p-4 rounded-xl bg-green-50 border border-green-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                    <span className="font-bold text-green-800">Title Search Complete</span>
+                                    <Badge className="bg-green-100 text-green-700 border-green-200 text-xs ml-auto">{r.dataSource}</Badge>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm text-green-700">
+                                    <MapPin className="w-3.5 h-3.5" />
+                                    <span className="font-semibold">{r.propertyAddress}</span>
+                                    <span className="text-green-500">-</span>
+                                    <span>{r.county}</span>
+                                  </div>
+                                </div>
+
+                                {/* Quick stats */}
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-center">
+                                    <div className="text-lg font-bold text-slate-900">{r.ownershipChain?.length || 0}</div>
+                                    <div className="text-[10px] text-slate-400 uppercase">Deeds</div>
+                                  </div>
+                                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-center">
+                                    <div className={`text-lg font-bold ${(r.liens?.length || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>{r.liens?.length || 0}</div>
+                                    <div className="text-[10px] text-slate-400 uppercase">Liens</div>
+                                  </div>
+                                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-center">
+                                    <div className={`text-lg font-bold ${(r.exceptions?.length || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>{r.exceptions?.length || 0}</div>
+                                    <div className="text-[10px] text-slate-400 uppercase">Exceptions</div>
+                                  </div>
+                                </div>
+
+                                {/* Chain preview */}
+                                {r.ownershipChain?.length > 0 && (
+                                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                                    <p className="text-xs font-bold text-slate-500 uppercase mb-2">Ownership Chain</p>
+                                    {r.ownershipChain.slice(0, 3).map((n: any, j: number) => (
+                                      <div key={j} className="flex items-center gap-2 text-xs text-slate-700 py-1 border-b border-slate-100 last:border-0">
+                                        <span className="font-mono text-slate-400">{n.date}</span>
+                                        <span>{n.grantor}</span>
+                                        <span className="text-slate-400">→</span>
+                                        <span className="font-semibold">{n.grantee}</span>
+                                      </div>
+                                    ))}
+                                    {r.ownershipChain.length > 3 && (
+                                      <p className="text-[10px] text-slate-400 mt-1">+ {r.ownershipChain.length - 3} more records</p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Liens preview */}
+                                {r.liens?.length > 0 && (
+                                  <div className="p-3 rounded-lg bg-red-50 border border-red-100">
+                                    <p className="text-xs font-bold text-red-500 uppercase mb-2">Active Liens</p>
+                                    {r.liens.map((l: any, j: number) => (
+                                      <div key={j} className="flex items-center justify-between text-xs text-red-800 py-1">
+                                        <span>{l.claimant || l.type} ({l.type})</span>
+                                        <span className="font-mono font-bold">{l.amount}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {r.searchId && (
+                                  <p className="text-[10px] text-slate-400">Saved as search #{r.searchId} — view in History</p>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          if (toolName === "run_title_search" && !result.success) {
+                            return (
+                              <div key={i} className="my-3 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3">
+                                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
+                                <span className="text-red-700 text-sm">{result.error}</span>
+                              </div>
+                            );
+                          }
+
+                          if (toolName === "get_search_report" && result.success) {
+                            const rpt = result.report as any;
+                            return (
+                              <div key={i} className="my-3 p-4 rounded-xl bg-blue-50 border border-blue-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <FileText className="w-4 h-4 text-blue-600" />
+                                  <span className="font-bold text-blue-800 text-sm">Report #{result.id}: {result.address}</span>
+                                </div>
+                                <p className="text-xs text-blue-700">{result.county} - {result.source} - {result.created_at}</p>
+                                {result.screenshotCount > 0 && (
+                                  <p className="text-xs text-blue-600 mt-1">{result.screenshotCount} browser screenshot(s) captured</p>
+                                )}
+                              </div>
+                            );
+                          }
+                        }
                       }
                       return null;
                     })}

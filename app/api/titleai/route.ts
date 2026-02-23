@@ -60,6 +60,12 @@ async function streamNovaActSearch(
           // Forward as 'log' so it shows in the terminal panel but doesn't
           // confuse the main step tracker (which we drive ourselves).
           send({ type: 'log', step: evt.step, message: evt.message });
+        } else if (evt.type === 'live_view') {
+          // Forward live browser stream URL directly to frontend
+          send({ type: 'live_view', url: evt.url });
+        } else if (evt.type === 'screenshot') {
+          // Forward browser screenshots directly to frontend
+          send({ type: 'screenshot', label: evt.label, step: evt.step, data: evt.data });
         } else if (evt.type === 'result') {
           resultData = evt.data;
         }

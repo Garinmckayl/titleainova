@@ -3,166 +3,213 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Home, Search } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { FileText, Home, History, Building2 } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputButton,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+  type PromptInputMessage,
+} from "@/components/ai-elements/prompt-input";
+
+const STARTERS = [
+  { label: "Check for liens", q: "What liens are recorded against 1234 Oak Street, Houston TX?" },
+  { label: "Chain of title", q: "Who are the previous owners of 500 Elm Ave, Dallas TX?" },
+  { label: "Title risks", q: "Are there any title exceptions or encumbrances I should know about?" },
+  { label: "Deed requirements", q: "What are the requirements for a valid deed transfer in Texas?" },
+];
 
 export default function TitleChatPage() {
-  const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/titleai/chat' }),
+  const [text, setText] = useState("");
+
+  const { messages, status, sendMessage } = useChat({
+    transport: new DefaultChatTransport({ api: "/api/titleai/chat" }),
   });
+
   const isLoading = status === "streaming" || status === "submitted";
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    
-    await sendMessage({ text: input });
-    setInput("");
+  const handleSubmit = (msg: PromptInputMessage) => {
+    if (!msg.text?.trim()) return;
+    sendMessage({ text: msg.text });
+    setText("");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+    <TooltipProvider>
+    <div className="flex flex-col h-screen bg-white">
       {/* Header */}
-      <div className="border-b bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-            Title AI Chat
-          </Link>
-          <div className="flex gap-2">
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur shrink-0">
+        <div className="px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
+          <div className="flex items-center gap-4">
             <Link href="/titleai">
-              <Button variant="ghost" size="sm">
-                <Home className="w-4 h-4 mr-1" />
+              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
+                <Home className="w-4 h-4" />
                 Search
               </Button>
             </Link>
-            <Link href="/titleai/chat">
-              <Button variant="default" size="sm">💬 Chat</Button>
+            <Link href="/searches">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
+                <History className="w-4 h-4" />
+                History
+              </Button>
             </Link>
           </div>
-        </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
-        <div className="mb-6">
-          <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-            Property Title Assistant
-          </h1>
-          <p className="text-slate-600 text-lg">
-            Powered by Amazon Nova Pro • Multi-Agent Title Research
-          </p>
-          <div className="flex gap-2 mt-4">
-            <Badge className="bg-green-100 text-green-700 border-green-200">🏠 Property Search</Badge>
-            <Badge className="bg-blue-100 text-blue-700 border-blue-200">⚡ Real-time Analysis</Badge>
-            <Badge className="bg-purple-100 text-purple-700 border-purple-200">🤖 Multi-Agent</Badge>
-            <Badge className="bg-orange-100 text-orange-700 border-orange-200">🧠 Nova Pro</Badge>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <span className="font-bold text-slate-900">Title AI Chat</span>
+            <Badge className="bg-yellow-100 text-yellow-700 border border-yellow-200 text-xs">
+              Nova Pro
+            </Badge>
+          </div>
+
+          <div className="flex gap-2">
+            <Badge variant="outline" className="text-xs gap-1.5 text-slate-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+              Multi-Agent
+            </Badge>
           </div>
         </div>
+      </header>
 
-        <Card className="shadow-lg border-slate-200">
-          {/* Messages */}
-          <div className="h-[550px] overflow-y-auto p-6 space-y-4">
-            {messages.length === 0 && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center max-w-2xl">
-                  <div className="text-7xl mb-6">🏠</div>
-                  <h2 className="text-2xl font-bold mb-4 text-slate-800">Ask about any property</h2>
-                  <div className="grid gap-3 text-left">
-                    <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200 hover:shadow-md transition cursor-pointer">
-                      <p className="font-medium text-green-900">"What liens are on 123 Main St?"</p>
-                    </div>
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200 hover:shadow-md transition cursor-pointer">
-                      <p className="font-medium text-blue-900">"Show me the ownership history"</p>
-                    </div>
-                    <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200 hover:shadow-md transition cursor-pointer">
-                      <p className="font-medium text-purple-900">"Are there any title issues?"</p>
-                    </div>
-                  </div>
-                </div>
+      {/* Messages */}
+      <div className="flex-1 overflow-hidden max-w-5xl w-full mx-auto px-4">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-8 py-16">
+            <div>
+              <div className="w-20 h-20 mx-auto rounded-2xl bg-yellow-100 flex items-center justify-center text-yellow-600 mb-6">
+                <Building2 className="w-10 h-10" />
               </div>
-            )}
+              <h2 className="text-2xl font-bold text-slate-900 text-center mb-2">
+                Property Title Assistant
+              </h2>
+              <p className="text-slate-500 text-center max-w-md">
+                Ask about ownership history, liens, encumbrances, and title risks for any US property.
+              </p>
+            </div>
 
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${
-                    message.role === "user"
-                      ? "bg-gradient-to-r from-green-600 to-blue-600 text-white"
-                      : "bg-white border border-slate-200"
-                  }`}
+            <div className="grid grid-cols-2 gap-3 w-full max-w-xl">
+              {STARTERS.map((s) => (
+                <button
+                  key={s.label}
+                  onClick={() => { sendMessage({ text: s.q }); setText(""); }}
+                  className="p-4 text-left rounded-xl bg-slate-50 border border-slate-200 hover:border-yellow-400 hover:bg-yellow-50 transition group"
                 >
-                  <div className={`text-xs font-semibold mb-2 ${message.role === "user" ? "text-green-100" : "text-slate-500"}`}>
-                    {message.role === "user" ? "You" : "🏠 Title AI"}
+                  <p className="font-semibold text-slate-900 group-hover:text-yellow-700 text-sm mb-1">{s.label}</p>
+                  <p className="text-xs text-slate-500 line-clamp-2">"{s.q}"</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2 flex-wrap justify-center">
+              <Badge className="bg-yellow-50 text-yellow-700 border border-yellow-200">Nova Act Browser Agent</Badge>
+              <Badge className="bg-blue-50 text-blue-700 border border-blue-200">Chain of Title</Badge>
+              <Badge className="bg-red-50 text-red-700 border border-red-200">Lien Detection</Badge>
+              <Badge className="bg-purple-50 text-purple-700 border border-purple-200">Risk Analysis</Badge>
+            </div>
+          </div>
+        ) : (
+          <Conversation className="h-full">
+            <ConversationContent>
+              {messages.map((message) => (
+                <Message from={message.role} key={message.id}>
+                  <div className="flex-shrink-0">
+                    {message.role === "user" ? (
+                      <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white text-xs font-bold">
+                        U
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                    )}
                   </div>
-                  <div className={`prose prose-sm max-w-none ${message.role === "user" ? "prose-invert" : ""}`}>
+                  <MessageContent>
                     {message.parts.map((part, i) => {
-                      if (part.type === 'text') {
+                      if (part.type === "text") {
                         return (
-                          <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
+                          <MessageResponse key={i}>
                             {part.text}
-                          </ReactMarkdown>
+                          </MessageResponse>
                         );
                       }
                       return null;
                     })}
-                  </div>
-                </div>
-              </div>
-            ))}
+                  </MessageContent>
+                </Message>
+              ))}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+        )}
+      </div>
 
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                    </div>
-                    <span className="text-slate-600 text-sm">Analyzing with Nova Pro...</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input */}
-          <div className="border-t pt-4 px-6 pb-6">
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about property titles, liens, ownership..."
-                disabled={isLoading}
-                className="flex-1 border-slate-300 focus:border-green-500 focus:ring-green-500"
+      {/* Input */}
+      <div className="border-t border-slate-200 bg-white p-4 shrink-0">
+        <div className="max-w-5xl mx-auto">
+          <PromptInput
+            onSubmit={handleSubmit}
+            className="border border-slate-300 rounded-xl bg-white shadow-sm"
+          >
+            <PromptInputBody>
+              <PromptInputTextarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Ask about property titles, liens, ownership history..."
+                className="bg-transparent text-slate-900 placeholder:text-slate-400 border-0 focus:ring-0"
               />
-              <Button 
-                type="submit" 
-                disabled={isLoading}
-                className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
-              >
-                <Search className="w-4 h-4 mr-1" />
-                Ask
-              </Button>
-            </form>
-            <p className="text-xs text-slate-500 text-center mt-3">
-              Powered by Amazon Nova Pro • Multi-Agent Title Research • Real-time Property Analysis
-            </p>
-          </div>
-        </Card>
+            </PromptInputBody>
+            <PromptInputFooter className="border-t border-slate-100">
+              <PromptInputTools>
+                <PromptInputButton
+                  variant="ghost"
+                  className="text-slate-400 text-xs gap-1"
+                  tooltip="Nova Act browses county recorder websites in real-time"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                  Nova Act
+                </PromptInputButton>
+                <PromptInputButton
+                  variant="ghost"
+                  className="text-slate-400 text-xs gap-1"
+                  tooltip="Amazon Nova Pro analyzes title data"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
+                  Nova Pro
+                </PromptInputButton>
+              </PromptInputTools>
+              <PromptInputSubmit
+                disabled={!text.trim()}
+                status={status}
+                className="bg-[#fbbf24] hover:bg-[#f59e0b] text-slate-900 border-0"
+              />
+            </PromptInputFooter>
+          </PromptInput>
+          <p className="text-center text-slate-400 text-xs mt-2">
+            Powered by Amazon Nova Act + Nova Pro · Real-time county recorder data
+          </p>
+        </div>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

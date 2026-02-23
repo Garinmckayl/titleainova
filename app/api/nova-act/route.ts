@@ -18,11 +18,11 @@ export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 min — browser automation takes time
 
 const COUNTY_URLS: Record<string, string> = {
-  'Harris County':  'https://media.cclerk.hctx.net/RealEstate/Search',
+  'Harris County':  'https://www.cclerk.hctx.net/applications/websearch/RP.aspx',
   'Dallas County':  'https://dallas.tx.publicsearch.us/',
   'Tarrant County': 'https://tarrant.tx.publicsearch.us/',
   'Bexar County':   'https://bexar.tx.publicsearch.us/',
-  'Travis County':  'https://www.tccsearch.org/RealEstate/SearchEntry.aspx',
+  'Travis County':  'https://www.tccsearch.org/',
 };
 
 export async function POST(req: NextRequest) {

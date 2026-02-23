@@ -12,25 +12,25 @@ export interface CountyRecord {
 
 const COUNTY_DB: CountyRecord[] = [
   // ─── TEXAS ───
-  { name: 'Harris County',  state: 'TX', recorderUrl: 'https://www.cclerk.hctx.net/', searchUrl: 'https://media.cclerk.hctx.net/RealEstate/Search' },
+  { name: 'Harris County',  state: 'TX', recorderUrl: 'https://www.cclerk.hctx.net/', searchUrl: 'https://www.cclerk.hctx.net/applications/websearch/RP.aspx' },
   { name: 'Dallas County',  state: 'TX', recorderUrl: 'https://www.dallascounty.org/', searchUrl: 'https://dallas.tx.publicsearch.us/' },
   { name: 'Tarrant County', state: 'TX', recorderUrl: 'https://www.tarrantcountytx.gov/', searchUrl: 'https://tarrant.tx.publicsearch.us/' },
   { name: 'Bexar County',   state: 'TX', recorderUrl: 'https://bexar.org/', searchUrl: 'https://bexar.tx.publicsearch.us/' },
-  { name: 'Travis County',  state: 'TX', recorderUrl: 'https://www.traviscountytx.gov/', searchUrl: 'https://www.tccsearch.org/RealEstate/SearchEntry.aspx' },
+  { name: 'Travis County',  state: 'TX', recorderUrl: 'https://countyclerk.traviscountytx.gov/', searchUrl: 'https://www.tccsearch.org/' },
   { name: 'Collin County',  state: 'TX', recorderUrl: 'https://www.collincountytx.gov/', searchUrl: 'https://collin.tx.publicsearch.us/' },
   { name: 'Denton County',  state: 'TX', recorderUrl: 'https://www.dentoncounty.gov/', searchUrl: 'https://denton.tx.publicsearch.us/' },
-  { name: 'Fort Bend County', state: 'TX', recorderUrl: 'https://www.fortbendcountytx.gov/', searchUrl: 'https://fortbend.tx.publicsearch.us/' },
+  { name: 'Fort Bend County', state: 'TX', recorderUrl: 'https://www.fortbendcountytx.gov/', searchUrl: 'http://ccweb.co.fort-bend.tx.us/RealEstate/SearchEntry.aspx' },
   { name: 'Montgomery County TX', state: 'TX', recorderUrl: 'https://www.mctx.org/', searchUrl: 'https://montgomery.tx.publicsearch.us/' },
-  { name: 'Williamson County', state: 'TX', recorderUrl: 'https://www.wilco.org/', searchUrl: 'https://williamson.tx.publicsearch.us/' },
+  { name: 'Williamson County', state: 'TX', recorderUrl: 'https://www.wilco.org/', searchUrl: 'https://williamsoncountytx-web.tylerhost.net/williamsonweb/' },
   // ─── CALIFORNIA ───
-  { name: 'Los Angeles County', state: 'CA', recorderUrl: 'https://rrcc.lacounty.gov/', searchUrl: 'https://assessor.lacounty.gov/propertySearch' },
-  { name: 'San Diego County', state: 'CA', recorderUrl: 'https://arcc.sandiegocounty.gov/', searchUrl: 'https://arcc.sdcounty.ca.gov/Pages/AssessorSearch.aspx' },
-  { name: 'Orange County', state: 'CA', recorderUrl: 'https://ocassessor.gov/', searchUrl: 'https://www.ocassessor.gov/parcelSearch' },
-  { name: 'Riverside County', state: 'CA', recorderUrl: 'https://www.countyofriverside.us/assessor/', searchUrl: 'https://riverside.ca.publicsearch.us/' },
+  { name: 'Los Angeles County', state: 'CA', recorderUrl: 'https://rrcc.lacounty.gov/', searchUrl: 'https://rrcc.lacounty.gov/landrecords/' },
+  { name: 'San Diego County', state: 'CA', recorderUrl: 'https://arcc.sandiegocounty.gov/', searchUrl: 'https://arcc.sdcounty.ca.gov/Pages/OfficialRecords.aspx' },
+  { name: 'Orange County', state: 'CA', recorderUrl: 'https://www.ocrecorder.com/', searchUrl: 'https://cr.ocgov.com/recorderworks/' },
+  { name: 'Riverside County', state: 'CA', recorderUrl: 'https://www.rivcoacr.org/', searchUrl: 'https://riverside.ca.publicsearch.us/' },
   { name: 'San Bernardino County', state: 'CA', recorderUrl: 'https://arc.sbcounty.gov/', searchUrl: 'https://sbcounty.ca.publicsearch.us/' },
-  { name: 'Santa Clara County', state: 'CA', recorderUrl: 'https://www.sccassessor.org/', searchUrl: 'https://www.sccassessor.org/index.php/online-services/property-search' },
-  { name: 'Alameda County', state: 'CA', recorderUrl: 'https://www.acgov.org/clerk-recorder/', searchUrl: 'https://www.acgov.org/acprop/pub/search/commonSearchCriteria.do' },
-  { name: 'Sacramento County', state: 'CA', recorderUrl: 'https://www.assessor.saccounty.gov/', searchUrl: 'https://assessor.saccounty.gov/PropertySearch' },
+  { name: 'Santa Clara County', state: 'CA', recorderUrl: 'https://clerkrecorder.sccgov.org/', searchUrl: 'https://recorderonline.sccgov.org/' },
+  { name: 'Alameda County', state: 'CA', recorderUrl: 'https://www.acgov.org/clerk-recorder/', searchUrl: 'https://recorderonline.acgov.org/' },
+  { name: 'Sacramento County', state: 'CA', recorderUrl: 'https://recorder.saccounty.gov/', searchUrl: 'https://recorderonline.saccounty.gov/' },
   { name: 'Fresno County', state: 'CA', recorderUrl: 'https://www.co.fresno.ca.us/departments/assessor-recorder-clerk', searchUrl: 'https://arc.fresnocountyca.gov/' },
   // ─── FLORIDA ───
   { name: 'Miami-Dade County', state: 'FL', recorderUrl: 'https://www.miami-dadeclerk.com/', searchUrl: 'https://www.miami-dadeclerk.com/officialrecords/StandardSearch.aspx' },
@@ -62,12 +62,12 @@ const COUNTY_DB: CountyRecord[] = [
   { name: 'Pierce County', state: 'WA', recorderUrl: 'https://www.piercecountywa.gov/recorder', searchUrl: 'https://epip.co.pierce.wa.us/cfapps/EPIP/parcelInfo/searchByAddress.cfm' },
   { name: 'Snohomish County', state: 'WA', recorderUrl: 'https://snohomishcountywa.gov/388/Auditor', searchUrl: 'https://www.snohomishcountywa.gov/607/Real-Property' },
   // ─── COLORADO ───
-  { name: 'Denver County', state: 'CO', recorderUrl: 'https://www.denvergov.org/assessor', searchUrl: 'https://www.denvergov.org/assessor/AssessorServices/PropertyInformation/tabid/381/Default.aspx' },
+  { name: 'Denver County', state: 'CO', recorderUrl: 'https://www.denvergov.org/Government/Agencies-Departments-Offices/Clerk-Recorder', searchUrl: 'https://co.denver.publicsearch.us/' },
   { name: 'Arapahoe County', state: 'CO', recorderUrl: 'https://www.arapahoegov.com/clerk-and-recorder', searchUrl: 'https://co.arapahoe.publicsearch.us/' },
   { name: 'Jefferson County CO', state: 'CO', recorderUrl: 'https://www.jeffco.us/clerk', searchUrl: 'https://co.jefferson.publicsearch.us/' },
   { name: 'Douglas County CO', state: 'CO', recorderUrl: 'https://www.douglas.co.us/clerk-and-recorder/', searchUrl: 'https://co.douglas.publicsearch.us/' },
   // ─── NEVADA ───
-  { name: 'Clark County', state: 'NV', recorderUrl: 'https://www.clarkcountynv.gov/government/assessor', searchUrl: 'https://recorder.clarkcountynv.gov/landmaster/' },
+  { name: 'Clark County', state: 'NV', recorderUrl: 'https://www.clarkcountynv.gov/government/departments/county_recorder/', searchUrl: 'https://recorder.clarkcountynv.gov/landmaster/' },
   { name: 'Washoe County', state: 'NV', recorderUrl: 'https://www.washoecounty.gov/recorder/', searchUrl: 'https://www.washoecounty.gov/recorder/search.php' },
   // ─── NORTH CAROLINA ───
   { name: 'Mecklenburg County', state: 'NC', recorderUrl: 'https://www.mecknc.gov/deeds', searchUrl: 'https://nc.mecklenburg.publicsearch.us/' },

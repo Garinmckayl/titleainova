@@ -16,10 +16,11 @@ Run:
 import os
 import json
 import random
+import time
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from dataclasses import dataclass, asdict
-from typing import Optional, List
+from typing import Optional, List, Generator
 
 app = Flask(__name__)
 
@@ -42,8 +43,12 @@ COUNTY_URLS = {
     "Tarrant County": "https://tarrant.tx.publicsearch.us/",
     "Bexar County":   "https://bexar.tx.publicsearch.us/",
     "Travis County":  "https://www.tccsearch.org/RealEstate/SearchEntry.aspx",
+    "King County":    "https://recordsearch.kingcounty.gov/LandmarkWeb/",
+    "Cook County":    "https://www.cookcountyassessor.com/search",
+    "Maricopa County":"https://mcassessor.maricopa.gov/",
+    "Orange County":  "https://www.ocassessor.gov/",
+    "San Diego County":"https://arcc.sdcounty.ca.gov/Pages/Assessor-Parcel-Viewer.aspx",
 }
-
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -238,6 +243,198 @@ def simulate_search(address: str, county: str) -> TitleSearchResult:
 
 
 # ---------------------------------------------------------------------------
+# SSE helpers
+# ---------------------------------------------------------------------------
+
+def sse(event_type: str, payload: dict) -> str:
+    """Format a server-sent event."""
+    return f"data: {json.dumps({'type': event_type, **payload})}\n\n"
+
+
+def run_nova_act_streaming(address: str, county: str, county_url: str) -> Generator[str, None, None]:
+    """
+    Run the Nova Act workflow and yield SSE progress events at each step.
+    Falls back to a simulated streaming run if Nova Act is unavailable.
+    """
+    aws_ready = NOVA_ACT_AVAILABLE and bool(
+        os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
+
+    if aws_ready:
+        yield from _nova_act_stream(address, county, county_url)
+    else:
+        yield from _simulate_stream(address, county)
+
+
+def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[str, None, None]:
+    """Real Nova Act streaming — emits progress events as the browser navigates."""
+    ownership_chain: List[dict] = []
+    liens: List[dict] = []
+    parcel_id: Optional[str] = None
+    legal_description: Optional[str] = None
+    error_msg: Optional[str] = None
+
+    yield sse("progress", {"step": "lookup", "message": f"Nova Act launching Chromium browser..."})
+
+    try:
+        from pydantic import BaseModel
+
+        yield sse("progress", {"step": "lookup", "message": f"Navigating to {county} recorder website..."})
+
+        @workflow(
+            workflow_definition_name=WORKFLOW_DEFINITION_NAME,
+            model_id=MODEL_ID,
+            boto_session_kwargs={"region_name": os.getenv("AWS_REGION", "us-east-1")},
+        )
+        def _run():
+            nonlocal ownership_chain, liens, parcel_id, legal_description
+
+            with NovaAct(starting_page=county_url) as nova:
+
+                nova.act(
+                    f"Search for the property at this address: {address}. "
+                    "Type the address into the search field and submit the search."
+                )
+
+                class ParcelInfo(BaseModel):
+                    parcel_id: str = ""
+                    legal_description: str = ""
+
+                parcel_result = nova.act_get(
+                    "From the search results, find the parcel ID (APN or instrument number) "
+                    "and the legal description of the property.",
+                    schema=ParcelInfo.model_json_schema(),
+                )
+                if parcel_result.parsed_response:
+                    info = ParcelInfo.model_validate(parcel_result.parsed_response)
+                    parcel_id = info.parcel_id or None
+                    legal_description = info.legal_description or None
+
+                nova.act(
+                    "Click on the property from the search results to open its detail page, "
+                    "then navigate to the deed history, ownership records, or instrument history section."
+                )
+
+                class DeedRecord(BaseModel):
+                    date: str = ""
+                    grantor: str = ""
+                    grantee: str = ""
+                    documentType: str = ""
+                    documentNumber: str = ""
+
+                class DeedHistory(BaseModel):
+                    deeds: List[DeedRecord] = []
+
+                deed_result = nova.act_get(
+                    "Extract every deed and transfer record on this page. "
+                    "For each record: recording date, grantor, grantee, document type, document number. "
+                    "Return all records oldest to newest.",
+                    schema=DeedHistory.model_json_schema(),
+                )
+                if deed_result.parsed_response:
+                    history = DeedHistory.model_validate(deed_result.parsed_response)
+                    ownership_chain = [d.model_dump() for d in history.deeds]
+
+                nova.act(
+                    "Go back and search for any tax liens, judgment liens, mechanic's liens, "
+                    f"or encumbrances recorded against: {address}"
+                )
+
+                class LienRecord(BaseModel):
+                    type: str = ""
+                    claimant: str = ""
+                    amount: str = ""
+                    dateRecorded: str = ""
+                    status: str = "Unknown"
+                    priority: str = "Medium"
+
+                class LienList(BaseModel):
+                    liens: List[LienRecord] = []
+
+                lien_result = nova.act_get(
+                    "Extract all active liens, tax notices, deeds of trust, or encumbrances. "
+                    "For each: type, claimant, amount, date recorded, status, priority.",
+                    schema=LienList.model_json_schema(),
+                )
+                if lien_result.parsed_response:
+                    lien_list = LienList.model_validate(lien_result.parsed_response)
+                    liens = [l.model_dump() for l in lien_list.liens]
+
+        # Run the workflow — this blocks until Nova Act finishes all steps
+        # We emit progress events before and after
+        yield sse("progress", {"step": "retrieval", "message": f"Searching {county} public records for \"{address}\"..."})
+        _run()
+        yield sse("progress", {"step": "chain", "message": f"Extracted {len(ownership_chain)} deed record(s) from county recorder..."})
+        yield sse("progress", {"step": "liens", "message": f"Found {len(liens)} lien(s) — cross-referencing tax records..."})
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[NovaAct Stream Error] {error_msg}")
+        # Fall back to simulation
+        yield sse("progress", {"step": "retrieval", "message": f"Nova Act browser step encountered an issue — switching to data fallback..."})
+        sim = simulate_search(address, county)
+        ownership_chain = sim.ownership_chain
+        liens = sim.liens
+        parcel_id = sim.parcel_id
+        legal_description = sim.legal_description
+
+    source = "nova_act_workflow" if not error_msg else f"simulation_fallback"
+    yield sse("progress", {"step": "risk", "message": "Running Nova Pro risk analysis on title data..."})
+
+    result = TitleSearchResult(
+        address=address, county=county,
+        ownership_chain=ownership_chain, liens=liens,
+        parcel_id=parcel_id, legal_description=legal_description,
+        source=source,
+    )
+
+    yield sse("progress", {"step": "summary", "message": "Generating title report..."})
+    yield sse("result", {
+        "data": {
+            "address": result.address,
+            "county": result.county,
+            "parcelId": result.parcel_id,
+            "legalDescription": result.legal_description,
+            "ownershipChain": result.ownership_chain,
+            "liens": result.liens,
+            "source": result.source,
+        }
+    })
+
+
+def _simulate_stream(address: str, county: str) -> Generator[str, None, None]:
+    """Simulated streaming — mimics real Nova Act timing for demos."""
+    steps = [
+        ("lookup",    1.2, f"Nova Act launching Chromium browser (simulation mode)..."),
+        ("lookup",    0.8, f"Navigating to {county} recorder website..."),
+        ("retrieval", 2.0, f"Searching county index for \"{address}\"..."),
+        ("retrieval", 1.5, f"Property record found — opening deed history..."),
+        ("chain",     2.5, f"Reading deed transfer records from recorder database..."),
+        ("chain",     1.0, f"Extracting grantor/grantee chain of title..."),
+        ("liens",     2.0, f"Scanning {county} tax lien database..."),
+        ("liens",     1.5, f"Checking judgment and mechanic's lien records..."),
+        ("risk",      1.8, f"Nova Pro analyzing title exceptions and encumbrances..."),
+        ("summary",   1.0, f"Generating executive summary and PDF report..."),
+    ]
+    for step_id, delay, message in steps:
+        time.sleep(delay)
+        yield sse("progress", {"step": step_id, "message": message})
+
+    sim = simulate_search(address, county)
+    yield sse("result", {
+        "data": {
+            "address": sim.address,
+            "county": sim.county,
+            "parcelId": sim.parcel_id,
+            "legalDescription": sim.legal_description,
+            "ownershipChain": sim.ownership_chain,
+            "liens": sim.liens,
+            "source": sim.source,
+        }
+    })
+
+
+# ---------------------------------------------------------------------------
 # Flask routes
 # ---------------------------------------------------------------------------
 
@@ -310,6 +507,31 @@ def search():
                 "source": result.source,
             },
         })
+
+
+@app.route("/search-stream", methods=["POST"])
+def search_stream():
+    """SSE endpoint — streams progress events then final result JSON."""
+    data = request.get_json(force=True)
+    address = (data.get("address") or "").strip()
+    county = (data.get("county") or "Harris County").strip()
+
+    if not address:
+        return jsonify({"error": "address is required", "success": False}), 400
+
+    county_url = COUNTY_URLS.get(county, COUNTY_URLS["Harris County"])
+
+    def generate():
+        yield from run_nova_act_streaming(address, county, county_url)
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 if __name__ == "__main__":

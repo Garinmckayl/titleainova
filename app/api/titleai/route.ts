@@ -9,39 +9,70 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
- * Try Nova Act browser automation via Python sidecar (nova-act-service/main.py).
- * Falls back gracefully if NOVA_ACT_SERVICE_URL is not set or sidecar is unreachable.
+ * Stream Nova Act browser progress + final data from the Python sidecar via SSE.
+ * Yields all SSE events from the sidecar and resolves with the final result data.
  */
-async function tryNovaActSearch(address: string, countyName: string, baseUrl: string) {
-  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
-  if (!sidecarUrl) return null;
+async function streamNovaActSearch(
+  address: string,
+  countyName: string,
+  send: (data: any) => void,
+): Promise<any | null> {
+  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
 
+  let upstreamRes: Response;
   try {
-    // Call our own /api/nova-act route which proxies to the Python sidecar
-    const res = await fetch(`${baseUrl}/api/nova-act`, {
+    upstreamRes = await fetch(`${sidecarUrl}/search-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, county: countyName }),
-      signal: AbortSignal.timeout(270000), // 4.5 min — browser automation takes time
+      signal: AbortSignal.timeout(270_000),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success) return data.data;
-    }
-  } catch {
-    // Sidecar unreachable — fall through to web search / mock fallback
+  } catch (err: any) {
+    send({ type: 'log', step: 'retrieval', message: `Nova Act sidecar unavailable (${err.message}) — using fallback mode.` });
+    return null;
   }
-  return null;
+
+  if (!upstreamRes.ok || !upstreamRes.body) {
+    send({ type: 'log', step: 'retrieval', message: `Sidecar returned HTTP ${upstreamRes.status} — using fallback mode.` });
+    return null;
+  }
+
+  // Read the upstream SSE stream, forward progress events, capture result
+  const reader = upstreamRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let resultData: any = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() ?? '';
+
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const evt = JSON.parse(line.slice(6));
+        if (evt.type === 'progress') {
+          // Forward as 'log' so it shows in the terminal panel but doesn't
+          // confuse the main step tracker (which we drive ourselves).
+          send({ type: 'log', step: evt.step, message: evt.message });
+        } else if (evt.type === 'result') {
+          resultData = evt.data;
+        }
+        // Ignore 'error' from sidecar — we'll fall back below
+      } catch { /* ignore parse errors */ }
+    }
+  }
+
+  return resultData;
 }
 
 export async function POST(req: NextRequest) {
   const { address } = await req.json();
   const encoder = new TextEncoder();
-
-  // Derive base URL for internal API calls (works on both local and Vercel)
-  const host = req.headers.get('host') || 'localhost:3000';
-  const protocol = host.includes('localhost') ? 'http' : 'https';
-  const baseUrl = `${protocol}://${host}`;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -53,22 +84,22 @@ export async function POST(req: NextRequest) {
         // Step 1: County Lookup
         send({ type: 'progress', step: 'lookup', message: 'Identifying county and recorder...' });
         let county = await lookupCounty(address);
-        
+
         if (!county) {
           county = { name: 'Unknown County', state: 'US', recorderUrl: '', searchUrl: '' };
-          send({ type: 'progress', step: 'lookup', message: 'County not in list. Proceeding with general search...' });
+          send({ type: 'log', step: 'lookup', message: 'County not in database — defaulting to general search.' });
         } else {
-          send({ type: 'progress', step: 'lookup', message: `Found property in ${county.name}.` });
+          send({ type: 'log', step: 'lookup', message: `Property located in ${county.name}, ${county.state}.` });
         }
 
-        // Step 2: Nova Act Browser Automation (primary) → Web Search (fallback)
-        send({ type: 'progress', step: 'retrieval', message: `Launching Nova Act browser agent for ${county.name} recorder...` });
+        // Step 2: Nova Act SSE streaming (real-time browser logs to UI)
+        send({ type: 'progress', step: 'retrieval', message: `Nova Act launching Chromium for ${county.name} recorder...` });
 
-        const novaActData = await tryNovaActSearch(address, county.name, baseUrl);
+        const novaActData = await streamNovaActSearch(address, county.name, send);
         let docs: any[] = [];
 
         if (novaActData) {
-          send({ type: 'progress', step: 'retrieval', message: `Nova Act extracted ${novaActData.ownershipChain?.length || 0} deed records from county recorder website.` });
+          send({ type: 'progress', step: 'chain', message: `Nova Act extracted ${novaActData.ownershipChain?.length || 0} deed records from county recorder.` });
           docs = [{
             source: 'Amazon Nova Act — County Recorder Browser Agent',
             url: county.recorderUrl || '',
@@ -76,31 +107,28 @@ export async function POST(req: NextRequest) {
             type: 'NovaAct',
           }];
         } else {
-          send({ type: 'progress', step: 'retrieval', message: `Falling back to web search for ${county.name} records...` });
+          send({ type: 'log', step: 'retrieval', message: `Falling back to web search for ${county.name}...` });
 
           const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
           const hasGoogle = process.env.GOOGLE_SEARCH_API_KEY && !process.env.GOOGLE_SEARCH_API_KEY.startsWith('your_');
           if (!hasTavily && !hasGoogle) {
-            send({ type: 'progress', step: 'retrieval', message: 'No search keys found. Using demonstration mode...' });
+            send({ type: 'log', step: 'retrieval', message: 'No search API keys — using demonstration mode.' });
             docs = getMockDocs(address, county.name);
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 800));
           } else {
             docs = await retrieveCountyRecords(address, county.name);
             if (docs.length === 0) {
-              send({ type: 'error', message: 'No digital records found. A manual county search may be required.' });
+              send({ type: 'error', message: 'No digital records found. A manual courthouse search may be required.' });
               return;
             }
-            send({ type: 'progress', step: 'retrieval', message: `Analyzed ${docs.length} property records.` });
+            send({ type: 'log', step: 'retrieval', message: `Analyzed ${docs.length} property records from web search.` });
           }
+          send({ type: 'progress', step: 'chain', message: 'Building chain of title with Amazon Nova Pro...' });
         }
 
-        // Step 3: AI Analysis with Amazon Nova Pro
-        send({ type: 'progress', step: 'chain', message: 'Building chain of title with Amazon Nova Pro...' });
-
-        // Use Nova Act structured data directly when available
+        // Step 3: Nova Pro analysis
+        send({ type: 'progress', step: 'liens', message: 'Scanning for active liens and encumbrances...' });
         let chain = novaActData?.ownershipChain?.length ? novaActData.ownershipChain : await buildChainOfTitle(docs);
-
-        send({ type: 'progress', step: 'liens', message: 'Scanning for active liens...' });
         let liens = novaActData?.liens?.length ? novaActData.liens : await detectLiens(docs, county.name);
 
         send({ type: 'progress', step: 'risk', message: 'Assessing title risks with Amazon Nova Pro...' });
@@ -120,7 +148,7 @@ export async function POST(req: NextRequest) {
           exceptions,
           summary,
           dataSource: novaActData
-            ? `Amazon Nova Act — County Recorder Browser Agent (${novaActData.source?.includes('error') ? 'Partial' : 'Live'})`
+            ? `Amazon Nova Act — County Recorder Browser Agent (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'})`
             : 'Web Search + Amazon Nova Pro',
         };
 

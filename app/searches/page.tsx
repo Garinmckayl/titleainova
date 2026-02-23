@@ -214,7 +214,7 @@ export default function SearchesPage() {
           {' · '}Powered by{' '}
           <span className="text-slate-600 font-semibold">Amazon Nova Act</span>
           {' + '}
-          <span className="text-slate-600 font-semibold">Turso libSQL</span>
+          <span className="text-slate-600 font-semibold">Neon PostgreSQL</span>
         </div>
       )}
     </div>

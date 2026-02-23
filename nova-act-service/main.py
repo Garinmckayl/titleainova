@@ -17,6 +17,9 @@ import os
 import json
 import random
 import time
+import base64
+import threading
+import queue
 from datetime import datetime
 from flask import Flask, request, jsonify, Response, stream_with_context
 from dataclasses import dataclass, asdict
@@ -266,54 +269,80 @@ def run_nova_act_streaming(address: str, county: str, county_url: str) -> Genera
         yield from _simulate_stream(address, county)
 
 
-def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[str, None, None]:
-    """Real Nova Act streaming — emits progress events as the browser navigates."""
-    ownership_chain: List[dict] = []
-    liens: List[dict] = []
-    parcel_id: Optional[str] = None
-    legal_description: Optional[str] = None
-    error_msg: Optional[str] = None
-
-    yield sse("progress", {"step": "lookup", "message": f"Nova Act launching Chromium browser..."})
-
+def _take_screenshot(nova) -> Optional[str]:
+    """Take a JPEG screenshot from the current Nova Act browser page, return as base64."""
     try:
-        from pydantic import BaseModel
+        page = nova.get_page()
+        png_bytes = page.screenshot(type="jpeg", quality=55, full_page=False)
+        return base64.b64encode(png_bytes).decode("utf-8")
+    except Exception as e:
+        print(f"[screenshot] failed: {e}")
+        return None
 
-        yield sse("progress", {"step": "lookup", "message": f"Navigating to {county} recorder website..."})
 
-        @workflow(
-            workflow_definition_name=WORKFLOW_DEFINITION_NAME,
-            model_id=MODEL_ID,
-            boto_session_kwargs={"region_name": os.getenv("AWS_REGION", "us-east-1")},
-        )
-        def _run():
-            nonlocal ownership_chain, liens, parcel_id, legal_description
+def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[str, None, None]:
+    """
+    Real Nova Act streaming with live browser screenshots.
+    Runs Nova Act in a background thread, communicates via a queue so the
+    generator can yield SSE events (including screenshots) while the browser works.
+    """
+    evt_queue: queue.Queue = queue.Queue()
 
-            with NovaAct(starting_page=county_url) as nova:
+    def _put(type_: str, payload: dict):
+        evt_queue.put((type_, payload))
 
+    def _browser_thread():
+        """Runs in a background thread — puts events into evt_queue."""
+        try:
+            from pydantic import BaseModel
+
+            _put("progress", {"step": "lookup", "message": f"Nova Act launching Chromium browser..."})
+
+            with NovaAct(
+                starting_page=county_url,
+                ignore_https_errors=True,   # fixes InvalidCertificate on county sites
+                headless=True,
+            ) as nova:
+
+                _put("progress", {"step": "lookup", "message": f"Navigating to {county} recorder website..."})
+
+                # Step 1 — search
                 nova.act(
                     f"Search for the property at this address: {address}. "
                     "Type the address into the search field and submit the search."
                 )
+                shot = _take_screenshot(nova)
+                if shot:
+                    _put("screenshot", {"label": "Search results", "step": "retrieval", "data": shot})
 
+                _put("progress", {"step": "retrieval", "message": f"Searching {county} public records for \"{address}\"..."})
+
+                # Step 2 — parcel info
                 class ParcelInfo(BaseModel):
                     parcel_id: str = ""
                     legal_description: str = ""
 
                 parcel_result = nova.act_get(
-                    "From the search results, find the parcel ID (APN or instrument number) "
-                    "and the legal description of the property.",
+                    "Find the parcel ID (APN or instrument number) and legal description of the property.",
                     schema=ParcelInfo.model_json_schema(),
                 )
+                parcel_id = None
+                legal_description = None
                 if parcel_result.parsed_response:
                     info = ParcelInfo.model_validate(parcel_result.parsed_response)
                     parcel_id = info.parcel_id or None
                     legal_description = info.legal_description or None
 
+                # Step 3 — deed history
                 nova.act(
-                    "Click on the property from the search results to open its detail page, "
-                    "then navigate to the deed history, ownership records, or instrument history section."
+                    "Click on the property from search results to open its detail page, "
+                    "then navigate to deed history, ownership records, or instrument history."
                 )
+                shot = _take_screenshot(nova)
+                if shot:
+                    _put("screenshot", {"label": "Deed history page", "step": "chain", "data": shot})
+
+                _put("progress", {"step": "chain", "message": "Reading deed transfer records..."})
 
                 class DeedRecord(BaseModel):
                     date: str = ""
@@ -326,19 +355,26 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                     deeds: List[DeedRecord] = []
 
                 deed_result = nova.act_get(
-                    "Extract every deed and transfer record on this page. "
-                    "For each record: recording date, grantor, grantee, document type, document number. "
-                    "Return all records oldest to newest.",
+                    "Extract every deed and transfer record on this page: "
+                    "recording date, grantor, grantee, document type, document number. Oldest to newest.",
                     schema=DeedHistory.model_json_schema(),
                 )
+                ownership_chain = []
                 if deed_result.parsed_response:
                     history = DeedHistory.model_validate(deed_result.parsed_response)
                     ownership_chain = [d.model_dump() for d in history.deeds]
+                _put("progress", {"step": "chain", "message": f"Extracted {len(ownership_chain)} deed record(s)."})
 
+                # Step 4 — lien search
                 nova.act(
-                    "Go back and search for any tax liens, judgment liens, mechanic's liens, "
-                    f"or encumbrances recorded against: {address}"
+                    "Go back to the main search and search for any tax liens, judgment liens, "
+                    f"mechanic's liens, or encumbrances against: {address}"
                 )
+                shot = _take_screenshot(nova)
+                if shot:
+                    _put("screenshot", {"label": "Lien search", "step": "liens", "data": shot})
+
+                _put("progress", {"step": "liens", "message": "Scanning for active liens and encumbrances..."})
 
                 class LienRecord(BaseModel):
                     type: str = ""
@@ -352,52 +388,81 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                     liens: List[LienRecord] = []
 
                 lien_result = nova.act_get(
-                    "Extract all active liens, tax notices, deeds of trust, or encumbrances. "
-                    "For each: type, claimant, amount, date recorded, status, priority.",
+                    "Extract all active liens, tax notices, deeds of trust, or encumbrances: "
+                    "type, claimant, amount, date recorded, status, priority.",
                     schema=LienList.model_json_schema(),
                 )
+                liens = []
                 if lien_result.parsed_response:
                     lien_list = LienList.model_validate(lien_result.parsed_response)
                     liens = [l.model_dump() for l in lien_list.liens]
+                _put("progress", {"step": "liens", "message": f"Found {len(liens)} lien(s)."})
 
-        # Run the workflow — this blocks until Nova Act finishes all steps
-        # We emit progress events before and after
-        yield sse("progress", {"step": "retrieval", "message": f"Searching {county} public records for \"{address}\"..."})
-        _run()
-        yield sse("progress", {"step": "chain", "message": f"Extracted {len(ownership_chain)} deed record(s) from county recorder..."})
-        yield sse("progress", {"step": "liens", "message": f"Found {len(liens)} lien(s) — cross-referencing tax records..."})
+            _put("_done", {
+                "ownership_chain": ownership_chain,
+                "liens": liens,
+                "parcel_id": parcel_id,
+                "legal_description": legal_description,
+                "source": "nova_act_live",
+            })
 
-    except Exception as e:
-        error_msg = str(e)
-        print(f"[NovaAct Stream Error] {error_msg}")
-        # Fall back to simulation
-        yield sse("progress", {"step": "retrieval", "message": f"Nova Act browser step encountered an issue — switching to data fallback..."})
+        except Exception as e:
+            print(f"[NovaAct Thread Error] {e}")
+            _put("_error", {"message": str(e)})
+
+    # Start browser thread
+    t = threading.Thread(target=_browser_thread, daemon=True)
+    t.start()
+
+    # Drain the queue, yielding SSE events
+    ownership_chain = []
+    liens = []
+    parcel_id = None
+    legal_description = None
+    source = "nova_act_live"
+    error_msg = None
+
+    while True:
+        try:
+            evt_type, payload = evt_queue.get(timeout=120)
+        except queue.Empty:
+            error_msg = "Nova Act browser timed out"
+            break
+
+        if evt_type == "_done":
+            ownership_chain = payload["ownership_chain"]
+            liens = payload["liens"]
+            parcel_id = payload["parcel_id"]
+            legal_description = payload["legal_description"]
+            source = payload["source"]
+            break
+        elif evt_type == "_error":
+            error_msg = payload["message"]
+            break
+        else:
+            yield sse(evt_type, payload)
+
+    if error_msg:
+        yield sse("log", {"step": "retrieval", "message": f"Nova Act issue: {error_msg[:120]} — switching to fallback..."})
         sim = simulate_search(address, county)
         ownership_chain = sim.ownership_chain
         liens = sim.liens
         parcel_id = sim.parcel_id
         legal_description = sim.legal_description
+        source = f"simulation_fallback ({error_msg[:60]})"
 
-    source = "nova_act_workflow" if not error_msg else f"simulation_fallback"
     yield sse("progress", {"step": "risk", "message": "Running Nova Pro risk analysis on title data..."})
-
-    result = TitleSearchResult(
-        address=address, county=county,
-        ownership_chain=ownership_chain, liens=liens,
-        parcel_id=parcel_id, legal_description=legal_description,
-        source=source,
-    )
 
     yield sse("progress", {"step": "summary", "message": "Generating title report..."})
     yield sse("result", {
         "data": {
-            "address": result.address,
-            "county": result.county,
-            "parcelId": result.parcel_id,
-            "legalDescription": result.legal_description,
-            "ownershipChain": result.ownership_chain,
-            "liens": result.liens,
-            "source": result.source,
+            "address": address,
+            "county": county,
+            "parcelId": parcel_id,
+            "legalDescription": legal_description,
+            "ownershipChain": ownership_chain,
+            "liens": liens,
+            "source": source,
         }
     })
 

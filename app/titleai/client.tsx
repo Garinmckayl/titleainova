@@ -33,17 +33,27 @@ interface LogLine {
   ts: string;
 }
 
+interface Screenshot {
+  id: number;
+  label: string;
+  step: string;
+  data: string; // base64 jpeg
+}
+
 export function TitleSearchClient() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<string>("");
   const [progressMessage, setProgressMessage] = useState("");
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [activeScreenshot, setActiveScreenshot] = useState<Screenshot | null>(null);
   const [result, setResult] = useState<TitleReportData & { pdfBase64: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTerminal, setShowTerminal] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const logIdRef = useRef(0);
+  const shotIdRef = useRef(0);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -64,6 +74,8 @@ export function TitleSearchClient() {
     setResult(null);
     setError(null);
     setLogs([]);
+    setScreenshots([]);
+    setActiveScreenshot(null);
     setCurrentStep('lookup');
     setProgressMessage('Initializing Title AI agents...');
     setShowTerminal(true);
@@ -106,6 +118,16 @@ export function TitleSearchClient() {
           } else if (evt.type === 'log') {
             // Detailed log lines from Nova Act sidecar
             addLog(evt.step, evt.message);
+          } else if (evt.type === 'screenshot') {
+            const shot: Screenshot = {
+              id: shotIdRef.current++,
+              label: evt.label || 'Browser view',
+              step: evt.step || 'lookup',
+              data: evt.data,
+            };
+            setScreenshots(prev => [...prev, shot]);
+            setActiveScreenshot(shot);
+            addLog(evt.step, `[screenshot] ${evt.label}`);
           } else if (evt.type === 'result') {
             setResult(evt.data);
             setCurrentStep('complete');
@@ -296,6 +318,11 @@ export function TitleSearchClient() {
                     <Terminal className="h-3.5 w-3.5" />
                     nova-act-agent — title search
                   </div>
+                  {screenshots.length > 0 && (
+                    <span className="text-slate-500 text-xs font-mono">
+                      · {screenshots.length} screenshot{screenshots.length > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowTerminal(v => !v)}
@@ -313,6 +340,42 @@ export function TitleSearchClient() {
                     exit={{ height: 0 }}
                     className="overflow-hidden"
                   >
+                    {/* Live browser screenshot */}
+                    {activeScreenshot && (
+                      <div className="bg-slate-900 border-b border-slate-800 p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                          <span className="text-slate-400 text-xs font-mono">
+                            Nova Act Browser — {activeScreenshot.label}
+                          </span>
+                          {screenshots.length > 1 && (
+                            <div className="ml-auto flex gap-1">
+                              {screenshots.map((s, i) => (
+                                <button
+                                  key={s.id}
+                                  onClick={() => setActiveScreenshot(s)}
+                                  className={cn(
+                                    "w-6 h-6 rounded text-xs font-mono transition",
+                                    activeScreenshot.id === s.id
+                                      ? "bg-yellow-500 text-slate-900"
+                                      : "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                                  )}
+                                >
+                                  {i + 1}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`data:image/jpeg;base64,${activeScreenshot.data}`}
+                          alt={activeScreenshot.label}
+                          className="w-full rounded-lg border border-slate-700 max-h-64 object-contain object-top"
+                        />
+                      </div>
+                    )}
+
                     <div className="bg-slate-950 p-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1">
                       {logs.map(log => (
                         <div key={log.id} className="flex gap-3 items-start leading-relaxed">
@@ -552,6 +615,33 @@ export function TitleSearchClient() {
               </Card>
             </div>
           </div>
+
+          {/* Browser screenshots (collapsed, shown after result) */}
+          {screenshots.length > 0 && (
+            <details className="group">
+              <summary className="cursor-pointer flex items-center gap-2 text-sm text-slate-400 hover:text-slate-600 transition-colors list-none select-none">
+                <span className="w-2 h-2 rounded-full bg-green-400" />
+                View Nova Act browser screenshots ({screenshots.length})
+                <ChevronDown className="h-3.5 w-3.5 group-open:rotate-180 transition-transform" />
+              </summary>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {screenshots.map((shot) => (
+                  <div key={shot.id} className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                    <div className="bg-slate-800 px-3 py-1.5 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-slate-300 text-xs font-mono truncate">{shot.label}</span>
+                    </div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`data:image/jpeg;base64,${shot.data}`}
+                      alt={shot.label}
+                      className="w-full object-cover object-top max-h-48"
+                    />
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
 
           {/* Completed terminal log (collapsed by default) */}
           {logs.length > 0 && (

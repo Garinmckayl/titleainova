@@ -283,16 +283,13 @@ def _take_screenshot(nova) -> Optional[str]:
 def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[str, None, None]:
     """
     Real Nova Act via AgentCore Browser Tool (ACBT) — cloud-hosted browser.
-    1. BrowserClient.start() → managed browser session in AWS
-    2. generate_ws_headers() → CDP WebSocket URL + SigV4 headers
-    3. NovaAct(cdp_endpoint_url=...) → attach Nova Act to cloud browser
-    4. generate_live_view_url() → stream URL to frontend for iframe embed
-    Screenshots collected during workflow, emitted after.
-    Falls back to local simulation on any error.
+    Uses a thread-safe queue to stream screenshots in real-time as the
+    browser thread collects them, instead of batching at the end.
     """
     result_holder: dict = {}
-    screenshots_collected: List[dict] = []
     live_view_url_holder: List[str] = []
+    event_queue: queue.Queue = queue.Queue()
+    SENTINEL = "__THREAD_DONE__"
 
     def _browser_thread():
         ownership_chain: List[dict] = []
@@ -338,13 +335,14 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                     cdp_headers=ws_headers,
                 ) as nova:
 
+                    event_queue.put(("progress", {"step": "retrieval", "message": "Searching county records..."}))
                     nova.act(
                         f"Search for the property at this address: {address}. "
                         "Type the address into the search field and submit the search."
                     )
                     shot = _take_screenshot(nova)
                     if shot:
-                        screenshots_collected.append({"label": "Search results", "step": "retrieval", "data": shot})
+                        event_queue.put(("screenshot", {"label": "Search results", "step": "retrieval", "data": shot}))
 
                     class ParcelInfo(BaseModel):
                         parcel_id: str = ""
@@ -359,13 +357,14 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                         parcel_id = info.parcel_id or None
                         legal_description = info.legal_description or None
 
+                    event_queue.put(("progress", {"step": "chain", "message": "Navigating to deed history..."}))
                     nova.act(
                         "Click on the property to open its detail page, "
                         "then navigate to deed history, ownership records, or instrument history."
                     )
                     shot = _take_screenshot(nova)
                     if shot:
-                        screenshots_collected.append({"label": "Deed history", "step": "chain", "data": shot})
+                        event_queue.put(("screenshot", {"label": "Deed history", "step": "chain", "data": shot}))
 
                     class DeedRecord(BaseModel):
                         date: str = ""
@@ -385,10 +384,11 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                         history = DeedHistory.model_validate(deed_result.parsed_response)
                         ownership_chain = [d.model_dump() for d in history.deeds]
 
+                    event_queue.put(("progress", {"step": "liens", "message": "Scanning for liens and encumbrances..."}))
                     nova.act(f"Search for any tax liens, judgment liens, or encumbrances against: {address}")
                     shot = _take_screenshot(nova)
                     if shot:
-                        screenshots_collected.append({"label": "Lien search", "step": "liens", "data": shot})
+                        event_queue.put(("screenshot", {"label": "Lien search", "step": "liens", "data": shot}))
 
                     class LienRecord(BaseModel):
                         type: str = ""
@@ -429,6 +429,7 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                     print("[ACBT] Browser session stopped")
                 except Exception:
                     pass
+            event_queue.put(SENTINEL)
 
     yield sse("progress", {"step": "lookup", "message": "AgentCore Browser Tool — starting cloud browser session..."})
 
@@ -443,7 +444,19 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
         yield sse("live_view", {"url": live_view_url_holder[0]})
         yield sse("progress", {"step": "retrieval", "message": f"Cloud browser live — navigating to {county} recorder..."})
 
-    t.join(timeout=240)
+    # Stream events from the queue in real-time as the browser thread works
+    screenshots_collected: List[dict] = []
+    while True:
+        try:
+            item = event_queue.get(timeout=250)
+        except queue.Empty:
+            break
+        if item == SENTINEL:
+            break
+        event_type, payload = item
+        if event_type == "screenshot":
+            screenshots_collected.append(payload)
+        yield sse(event_type, payload)
 
     if not result_holder.get("success"):
         error_msg = result_holder.get("error", "timeout or unknown")
@@ -464,9 +477,6 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
         yield sse("progress", {"step": "chain", "message": f"Extracted {len(ownership_chain)} deed record(s)."})
         yield sse("progress", {"step": "liens", "message": f"Found {len(liens)} lien(s)."})
 
-        for shot in screenshots_collected:
-            yield sse("screenshot", shot)
-
     yield sse("progress", {"step": "risk", "message": "Running Nova Pro risk analysis on title data..."})
     yield sse("progress", {"step": "summary", "message": "Generating title report..."})
     yield sse("result", {
@@ -478,13 +488,40 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
             "ownershipChain": ownership_chain,
             "liens": liens,
             "source": source,
+            "screenshots": [{"label": s["label"], "step": s["step"]} for s in screenshots_collected],
         }
     })
 
 
 
 def _simulate_stream(address: str, county: str) -> Generator[str, None, None]:
-    """Simulated streaming — mimics real Nova Act timing for demos."""
+    """Simulated streaming — mimics real Nova Act timing for demos, including screenshots."""
+
+    # Generate a synthetic screenshot (a simple colored rectangle with text overlay)
+    def _make_demo_screenshot(step_label: str) -> str:
+        """Create a minimal 1x1 placeholder JPEG for demo screenshots."""
+        # 1x1 gray JPEG — tiny placeholder so the UI renders the screenshot panel
+        # Real screenshots come from Nova Act's browser; this is for demo/sim mode only
+        import struct
+        # Minimal valid JPEG: SOI + APP0 + DQT + SOF0 + DHT + SOS + data + EOI
+        # Using a hardcoded tiny gray JPEG (95 bytes)
+        gray_jpeg = bytes([
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
+            0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
+            0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09,
+            0x09, 0x08, 0x0A, 0x0C, 0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
+            0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D, 0x1A, 0x1C, 0x1C, 0x20,
+            0x24, 0x2E, 0x27, 0x20, 0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
+            0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39, 0x3D, 0x38, 0x32,
+            0x3C, 0x2E, 0x33, 0x34, 0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
+            0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x1F, 0x00, 0x00,
+            0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+            0x09, 0x0A, 0x0B, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F,
+            0x00, 0x7B, 0x40, 0x1B, 0xFF, 0xD9
+        ])
+        return base64.b64encode(gray_jpeg).decode("utf-8")
+
     steps = [
         ("lookup",    1.2, f"Nova Act launching Chromium browser (simulation mode)..."),
         ("lookup",    0.8, f"Navigating to {county} recorder website..."),
@@ -497,9 +534,19 @@ def _simulate_stream(address: str, county: str) -> Generator[str, None, None]:
         ("risk",      1.8, f"Nova Pro analyzing title exceptions and encumbrances..."),
         ("summary",   1.0, f"Generating executive summary and PDF report..."),
     ]
+
+    # Emit screenshots at key steps during the simulation
+    screenshot_at = {"retrieval": "Search results page", "chain": "Deed history", "liens": "Lien records"}
+    emitted_shots = set()
+
     for step_id, delay, message in steps:
         time.sleep(delay)
         yield sse("progress", {"step": step_id, "message": message})
+
+        if step_id in screenshot_at and step_id not in emitted_shots:
+            emitted_shots.add(step_id)
+            shot = _make_demo_screenshot(screenshot_at[step_id])
+            yield sse("screenshot", {"label": screenshot_at[step_id], "step": step_id, "data": shot})
 
     sim = simulate_search(address, county)
     yield sse("result", {

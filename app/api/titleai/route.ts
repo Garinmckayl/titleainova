@@ -169,17 +169,22 @@ export async function POST(req: NextRequest) {
         const pdfBase64 = pdfBuffer.toString('base64');
 
         // Persist search + screenshots to Turso DB
-        saveSearch(
-          address,
-          county.name,
-          novaActData?.parcelId ?? null,
-          novaActData?.source ?? 'web_search',
-          reportData,
-          collectedScreenshots,
-          userId,
-        ).catch((err) => console.error('[Turso] saveSearch failed:', err));
-
-        send({ type: 'result', data: { ...reportData, pdfBase64 } });
+        try {
+          const searchId = await saveSearch(
+            address,
+            county.name,
+            novaActData?.parcelId ?? null,
+            novaActData?.source ?? 'web_search',
+            reportData,
+            collectedScreenshots,
+            userId,
+          );
+          send({ type: 'result', data: { ...reportData, pdfBase64, searchId } });
+        } catch (err: any) {
+          console.error('[Turso] saveSearch failed:', err);
+          // Still send the result even if DB save fails
+          send({ type: 'result', data: { ...reportData, pdfBase64, saveError: err.message } });
+        }
       } catch (e: any) {
         console.error('Title search error:', e);
         send({ type: 'error', message: e.message || 'An unexpected error occurred.' });

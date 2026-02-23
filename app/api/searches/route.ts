@@ -21,16 +21,14 @@ export async function GET(req: NextRequest) {
       if (!row) {
         return NextResponse.json({ error: 'Not found' }, { status: 404 });
       }
-      return NextResponse.json({ success: true, data: { ...row, report: JSON.parse(row.report) } });
+      // report is already an object from Neon JSONB
+      return NextResponse.json({ success: true, data: row });
     }
 
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 20, 50) : 20;
     const rows = await getRecentSearches(limit);
-    return NextResponse.json({
-      success: true,
-      data: rows.map(r => ({ ...r, report: JSON.parse(r.report) })),
-    });
+    return NextResponse.json({ success: true, data: rows });
   } catch (err: any) {
     console.error('[/api/searches]', err);
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });

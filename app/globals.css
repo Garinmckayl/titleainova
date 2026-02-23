@@ -124,3 +124,24 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ─── Custom animations ───────────────────────────────────────── */
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes progress {
+  0% { width: 0%; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+}
+
+.animate-progress {
+  animation: progress 1.5s ease-in-out infinite;
+}

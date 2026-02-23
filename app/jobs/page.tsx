@@ -319,6 +319,57 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
               </CardContent>
             </Card>
           )}
+
+          {/* Liens */}
+          {job.result.liens?.length > 0 && (
+            <Card className="border-0 shadow-lg bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-red-100 text-red-600 rounded-lg">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-900">Liens & Encumbrances ({job.result.liens.length})</h3>
+                </div>
+                <div className="space-y-3">
+                  {job.result.liens.map((lien: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+                      <div>
+                        <p className="font-bold text-slate-900">{lien.claimant || lien.type}</p>
+                        <p className="text-sm text-slate-500">{lien.type} - {lien.status}{lien.dateRecorded && ` - ${lien.dateRecorded}`}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-slate-900">{lien.amount || 'N/A'}</p>
+                        {lien.priority === 'High' && <Badge className="bg-red-500 text-white border-0 mt-1 text-xs">High</Badge>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Exceptions */}
+          {job.result.exceptions?.length > 0 && (
+            <Card className="border-0 shadow-lg bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-900">Title Exceptions ({job.result.exceptions.length})</h3>
+                </div>
+                <div className="space-y-3">
+                  {job.result.exceptions.map((ex: any, i: number) => (
+                    <div key={i} className="p-4 bg-orange-50 border border-orange-100 rounded-xl">
+                      <span className="font-bold text-orange-800 text-sm">{ex.type}</span>
+                      <p className="text-sm text-orange-900 mt-1">{ex.description}</p>
+                      {ex.explanation && <p className="text-xs text-orange-700 mt-1">{ex.explanation}</p>}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </motion.div>
@@ -338,6 +389,9 @@ export default function JobsPage() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const selectedJobRef = useRef<Job | null>(null);
+  selectedJobRef.current = selectedJob;
+
   /* ── Fetch jobs list ──────────────────────────────────────── */
   const fetchJobs = useCallback(async () => {
     try {
@@ -346,15 +400,15 @@ export default function JobsPage() {
       if (json.success) {
         setJobs(json.data);
         // Update selectedJob if it's in the list
-        if (selectedJob) {
-          const updated = json.data.find((j: Job) => j.id === selectedJob.id);
+        if (selectedJobRef.current) {
+          const updated = json.data.find((j: Job) => j.id === selectedJobRef.current!.id);
           if (updated) setSelectedJob(updated);
         }
       }
     } catch (e: any) {
       console.error('Failed to fetch jobs', e);
     }
-  }, [selectedJob]);
+  }, []);
 
   /* ── Fetch a single job (for detail view) ─────────────────── */
   const fetchJob = useCallback(async (id: string) => {
@@ -373,8 +427,9 @@ export default function JobsPage() {
 
     // Poll every 3 seconds for updates
     pollRef.current = setInterval(() => {
-      if (selectedJob && (selectedJob.status === 'queued' || selectedJob.status === 'running')) {
-        fetchJob(selectedJob.id);
+      const current = selectedJobRef.current;
+      if (current && (current.status === 'queued' || current.status === 'running')) {
+        fetchJob(current.id);
       }
       fetchJobs();
     }, 3000);
@@ -382,7 +437,7 @@ export default function JobsPage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [fetchJobs, fetchJob, selectedJob]);
+  }, [fetchJobs, fetchJob]);
 
   /* ── Submit a new job ──────────────────────────────────────── */
   const submitJob = async () => {

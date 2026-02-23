@@ -264,11 +264,37 @@ export function TitleSearchClient() {
             {/* Progress Bar Loader */}
             {loading && (
                  <div className="h-1 bg-slate-100 w-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 animate-[progress_1.5s_ease-in-out_infinite]" />
+                    <div className="h-full bg-gradient-to-r from-yellow-400 to-orange-500 animate-progress" />
                  </div>
             )}
         </Card>
       </motion.div>
+
+      {/* Sample addresses — quick start */}
+      {!loading && !result && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="max-w-3xl mx-auto mt-4 flex flex-wrap justify-center gap-2"
+        >
+          <span className="text-xs text-slate-400 mr-1 self-center">Try:</span>
+          {[
+            '1600 Pennsylvania Ave, Washington, DC',
+            '100 Congress Ave, Austin, TX',
+            '2000 Main St, Dallas, TX',
+            '500 Fannin St, Houston, TX',
+          ].map((sample) => (
+            <button
+              key={sample}
+              onClick={() => { setAddress(sample); }}
+              className="text-xs px-3 py-1.5 rounded-full bg-white/60 border border-slate-200 text-slate-500 hover:text-slate-900 hover:border-yellow-300 hover:bg-yellow-50 transition-all cursor-pointer"
+            >
+              {sample}
+            </button>
+          ))}
+        </motion.div>
+      )}
 
       {/* AgentCore live browser — shown whenever URL is available */}
       {liveViewUrl && (

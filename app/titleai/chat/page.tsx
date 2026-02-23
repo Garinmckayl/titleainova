@@ -58,9 +58,15 @@ export default function TitleChatPage() {
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur shrink-0">
         <div className="px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
           <div className="flex items-center gap-4">
-            <Link href="/titleai">
+            <Link href="/">
               <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
                 <Home className="w-4 h-4" />
+                Home
+              </Button>
+            </Link>
+            <Link href="/titleai">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
+                <Search className="w-4 h-4" />
                 Search
               </Button>
             </Link>

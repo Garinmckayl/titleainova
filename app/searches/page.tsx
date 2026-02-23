@@ -13,6 +13,8 @@ import {
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Navbar } from '@/components/navbar-simple';
+import { Footer } from '@/components/footer-simple';
 
 interface ScreenshotRecord {
   label: string;
@@ -258,7 +260,9 @@ export default function SearchesPage() {
   }, []);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-16">
+    <div className="min-h-screen bg-gradient-to-b from-[#fefce8] to-white">
+      <Navbar />
+      <div className="max-w-5xl mx-auto px-4 py-16">
       {/* Header */}
       <div className="mb-12">
         <div className="flex items-center justify-between">
@@ -425,9 +429,11 @@ export default function SearchesPage() {
           {' - '}Powered by{' '}
           <span className="text-slate-600 font-semibold">Amazon Nova Act</span>
           {' + '}
-          <span className="text-slate-600 font-semibold">Turso</span>
+          <span className="text-slate-600 font-semibold">Nova Pro</span>
         </div>
       )}
+      </div>
+      <Footer />
     </div>
   );
 }

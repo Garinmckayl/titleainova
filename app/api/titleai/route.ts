@@ -4,19 +4,20 @@ import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieva
 import { buildChainOfTitle, detectLiens, assessRisk, generateSummary } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
-import { saveSearch } from '@/lib/turso';
+import { saveSearch, type ScreenshotRecord } from '@/lib/turso';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
  * Stream Nova Act browser progress + final data from the Python sidecar via SSE.
- * Yields all SSE events from the sidecar and resolves with the final result data.
+ * Captures screenshots into the provided array so they can be persisted to DB.
  */
 async function streamNovaActSearch(
   address: string,
   countyName: string,
   send: (data: any) => void,
+  collectedScreenshots: ScreenshotRecord[],
 ): Promise<any | null> {
   const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
 
@@ -38,7 +39,6 @@ async function streamNovaActSearch(
     return null;
   }
 
-  // Read the upstream SSE stream, forward progress events, capture result
   const reader = upstreamRes.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -57,19 +57,16 @@ async function streamNovaActSearch(
       try {
         const evt = JSON.parse(line.slice(6));
         if (evt.type === 'progress') {
-          // Forward as 'log' so it shows in the terminal panel but doesn't
-          // confuse the main step tracker (which we drive ourselves).
           send({ type: 'log', step: evt.step, message: evt.message });
         } else if (evt.type === 'live_view') {
-          // Forward live browser stream URL directly to frontend
           send({ type: 'live_view', url: evt.url });
         } else if (evt.type === 'screenshot') {
-          // Forward browser screenshots directly to frontend
+          // Forward to frontend AND collect for DB persistence
           send({ type: 'screenshot', label: evt.label, step: evt.step, data: evt.data });
+          collectedScreenshots.push({ label: evt.label, step: evt.step, data: evt.data });
         } else if (evt.type === 'result') {
           resultData = evt.data;
         }
-        // Ignore 'error' from sidecar — we'll fall back below
       } catch { /* ignore parse errors */ }
     }
   }
@@ -87,6 +84,9 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
+      // Collect screenshots from the sidecar to save in DB
+      const collectedScreenshots: ScreenshotRecord[] = [];
+
       try {
         // Step 1: County Lookup
         send({ type: 'progress', step: 'lookup', message: 'Identifying county and recorder...' });
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         // Step 2: Nova Act SSE streaming (real-time browser logs to UI)
         send({ type: 'progress', step: 'retrieval', message: `Nova Act launching Chromium for ${county.name} recorder...` });
 
-        const novaActData = await streamNovaActSearch(address, county.name, send);
+        const novaActData = await streamNovaActSearch(address, county.name, send, collectedScreenshots);
         let docs: any[] = [];
 
         if (novaActData) {
@@ -162,13 +162,14 @@ export async function POST(req: NextRequest) {
         const pdfBuffer = await generateTitleReportPDF(reportData);
         const pdfBase64 = pdfBuffer.toString('base64');
 
-        // Persist search to Turso DB (fire-and-forget, non-blocking)
+        // Persist search + screenshots to Turso DB
         saveSearch(
           address,
           county.name,
           novaActData?.parcelId ?? null,
           novaActData?.source ?? 'web_search',
           reportData,
+          collectedScreenshots,
         ).catch((err) => console.error('[Turso] saveSearch failed:', err));
 
         send({ type: 'result', data: { ...reportData, pdfBase64 } });

@@ -373,8 +373,8 @@ export function TitleSearchClient() {
                     exit={{ height: 0 }}
                     className="overflow-hidden"
                   >
-                     {/* Live browser screenshot or Agent Activity Panel */}
-                      {activeScreenshot ? (
+                     {/* Live browser screenshot — only shown when real screenshots arrive from Nova Act */}
+                      {activeScreenshot && (
                       <div className="bg-slate-900 border-b border-slate-800 p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -406,58 +406,6 @@ export function TitleSearchClient() {
                           alt={activeScreenshot.label}
                           className="w-full rounded-lg border border-slate-700 max-h-64 object-contain object-top"
                         />
-                      </div>
-                    ) : loading && (
-                      <div className="bg-slate-900 border-b border-slate-800 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                          <span className="text-slate-400 text-xs font-mono">
-                            Agent Activity — {currentStep || 'initializing'}
-                          </span>
-                        </div>
-                        {/* Animated agent visualization */}
-                        <div className="rounded-lg border border-slate-700 bg-slate-950 p-4 space-y-3">
-                          {/* Simulated browser chrome */}
-                          <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
-                            <div className="flex gap-1.5">
-                              <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-                              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
-                              <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
-                            </div>
-                            <div className="flex-1 h-5 bg-slate-800 rounded text-slate-500 text-[10px] font-mono flex items-center px-2 overflow-hidden">
-                              <span className="truncate">
-                                {currentStep === 'lookup' && 'agent://nova-act/property-lookup'}
-                                {currentStep === 'retrieval' && 'agent://nova-act/county-recorder-browser'}
-                                {currentStep === 'chain' && 'agent://nova-pro/chain-of-title-analysis'}
-                                {currentStep === 'liens' && 'agent://nova-pro/lien-detection'}
-                                {currentStep === 'risk' && 'agent://nova-pro/risk-assessment'}
-                                {currentStep === 'summary' && 'agent://nova-pro/report-generation'}
-                                {!currentStep && 'agent://nova-act/initializing'}
-                              </span>
-                            </div>
-                          </div>
-                          {/* Animated content blocks */}
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded bg-yellow-500/20 flex items-center justify-center">
-                                <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />
-                              </div>
-                              <div className="flex-1 space-y-1.5">
-                                <div className="h-2.5 bg-slate-800 rounded animate-pulse w-3/4" />
-                                <div className="h-2 bg-slate-800/60 rounded animate-pulse w-1/2" style={{ animationDelay: '150ms' }} />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 pt-1">
-                              {[0, 1, 2].map((i) => (
-                                <div key={i} className="h-16 bg-slate-800/40 rounded border border-slate-800 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
-                              ))}
-                            </div>
-                            <div className="flex items-center gap-2 pt-2">
-                              <div className="h-2 bg-yellow-500/30 rounded-full animate-pulse flex-1" />
-                              <span className="text-[10px] text-slate-600 font-mono">{progressMessage.slice(0, 40)}</span>
-                            </div>
-                          </div>
-                        </div>
                       </div>
                     )}
 

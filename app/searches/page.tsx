@@ -2,12 +2,23 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Building2, MapPin, ArrowRight, Clock, FileText, AlertTriangle, CheckCircle2, Loader2, History } from 'lucide-react';
+import {
+  Building2, MapPin, ArrowRight, Clock, FileText, AlertTriangle,
+  CheckCircle2, Loader2, History, ChevronDown, ShieldCheck, Camera, X
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+interface ScreenshotRecord {
+  label: string;
+  step: string;
+  data: string; // base64 jpeg
+}
 
 interface SearchRow {
   id: number;
@@ -16,11 +27,12 @@ interface SearchRow {
   parcel_id: string | null;
   source: string | null;
   created_at: string;
+  screenshots: ScreenshotRecord[];
   report: {
     summary?: string;
-    exceptions?: Array<{ type: string; description: string }>;
-    liens?: Array<{ type: string; amount: string; status: string }>;
-    ownershipChain?: Array<{ grantor: string; grantee: string; date: string }>;
+    exceptions?: Array<{ type: string; description: string; explanation?: string }>;
+    liens?: Array<{ type: string; amount: string; status: string; claimant?: string; dateRecorded?: string; priority?: string }>;
+    ownershipChain?: Array<{ grantor: string; grantee: string; date: string; documentType?: string; documentNumber?: string }>;
   };
 }
 
@@ -47,10 +59,192 @@ function SourceBadge({ source }: { source: string | null }) {
   );
 }
 
+/* ─── Detail view for a single search ────────────────────────── */
+function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      className="space-y-6"
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-yellow-100 flex items-center justify-center text-yellow-600">
+            <Building2 className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">{row.address}</h2>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              <SourceBadge source={row.source} />
+              <span className="text-xs text-slate-400">{row.county}</span>
+              {row.parcel_id && <span className="text-xs text-slate-400 font-mono">APN: {row.parcel_id}</span>}
+              <span className="text-xs text-slate-400">
+                {new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+          </div>
+        </div>
+        <Button onClick={onClose} variant="outline" size="sm" className="gap-1.5">
+          <X className="h-3.5 w-3.5" /> Back
+        </Button>
+      </div>
+
+      {/* Nova Act Browser Screenshots */}
+      {row.screenshots && row.screenshots.length > 0 && (
+        <Card className="border-0 shadow-lg bg-white overflow-hidden">
+          <div className="bg-slate-900 px-4 py-3 flex items-center gap-2">
+            <Camera className="h-4 w-4 text-green-400" />
+            <span className="text-slate-300 text-sm font-semibold">
+              Nova Act Browser Screenshots ({row.screenshots.length})
+            </span>
+          </div>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {row.screenshots.map((shot, i) => (
+                <div key={i} className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                  <div className="bg-slate-800 px-3 py-2 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    <span className="text-slate-300 text-xs font-mono truncate">{shot.label}</span>
+                    <Badge variant="outline" className="ml-auto text-[10px] text-slate-500 border-slate-600">{shot.step}</Badge>
+                  </div>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:image/jpeg;base64,${shot.data}`}
+                    alt={shot.label}
+                    className="w-full object-cover object-top"
+                  />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Summary */}
+      {row.report?.summary && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900">Executive Summary</h3>
+            </div>
+            <div className="text-slate-600 leading-relaxed text-sm prose prose-sm max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{row.report.summary}</ReactMarkdown>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Chain of Title */}
+      {row.report?.ownershipChain && row.report.ownershipChain.length > 0 && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">
+                <FileText className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900">
+                Chain of Title ({row.report.ownershipChain.length} records)
+              </h3>
+            </div>
+            <div className="relative pl-4 space-y-4">
+              <div className="absolute top-2 left-[19px] bottom-2 w-0.5 bg-slate-100" />
+              {row.report.ownershipChain.map((node, i) => (
+                <div key={i} className="relative flex gap-4">
+                  <div className="absolute -left-1 w-2.5 h-2.5 rounded-full bg-white border-[3px] border-slate-300 mt-1.5 z-10" />
+                  <div className="flex-1 p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex justify-between items-start mb-2">
+                      <Badge variant="outline" className="bg-white text-xs font-mono">{node.date}</Badge>
+                      {node.documentType && <span className="text-xs font-bold text-slate-400 uppercase">{node.documentType}</span>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <span className="text-xs text-slate-400 font-medium uppercase">Grantor</span>
+                        <p className="font-semibold text-slate-900 text-sm">{node.grantor}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-slate-400 font-medium uppercase">Grantee</span>
+                        <p className="font-semibold text-slate-900 text-sm">{node.grantee}</p>
+                      </div>
+                    </div>
+                    {node.documentNumber && (
+                      <div className="mt-2 pt-2 border-t border-slate-200/60 text-xs text-slate-500">
+                        Doc #: <span className="font-mono text-slate-700">{node.documentNumber}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Liens */}
+      {row.report?.liens && row.report.liens.length > 0 && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 text-red-600 rounded-lg">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900">Liens & Encumbrances ({row.report.liens.length})</h3>
+            </div>
+            <div className="space-y-3">
+              {row.report.liens.map((lien, i) => (
+                <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+                  <div>
+                    <p className="font-bold text-slate-900">{lien.claimant || lien.type}</p>
+                    <p className="text-sm text-slate-500">{lien.type} - {lien.status}{lien.dateRecorded && ` - ${lien.dateRecorded}`}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-slate-900">{lien.amount || 'N/A'}</p>
+                    {lien.priority === 'High' && <Badge className="bg-red-500 text-white border-0 mt-1 text-xs">High</Badge>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Exceptions */}
+      {row.report?.exceptions && row.report.exceptions.length > 0 && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900">Title Exceptions ({row.report.exceptions.length})</h3>
+            </div>
+            <div className="space-y-3">
+              {row.report.exceptions.map((ex, i) => (
+                <div key={i} className="p-4 bg-orange-50 border border-orange-100 rounded-xl">
+                  <span className="font-bold text-orange-800 text-sm">{ex.type}</span>
+                  <p className="text-sm text-orange-900 mt-1">{ex.description}</p>
+                  {ex.explanation && <p className="text-xs text-orange-700 mt-1">{ex.explanation}</p>}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </motion.div>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════════ */
+
 export default function SearchesPage() {
   const [searches, setSearches] = useState<SearchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SearchRow | null>(null);
 
   useEffect(() => {
     fetch('/api/searches?limit=20')
@@ -102,7 +296,7 @@ export default function SearchesPage() {
       )}
 
       {/* Empty state */}
-      {!loading && !error && searches.length === 0 && (
+      {!loading && !error && searches.length === 0 && !selected && (
         <div className="text-center py-24">
           <Building2 className="h-16 w-16 text-slate-200 mx-auto mb-4" />
           <p className="text-xl font-semibold text-slate-400 mb-2">No searches yet</p>
@@ -116,105 +310,122 @@ export default function SearchesPage() {
         </div>
       )}
 
-      {/* Search list */}
-      {!loading && !error && searches.length > 0 && (
-        <div className="space-y-4">
-          {searches.map((row, i) => {
-            const lienCount = row.report?.liens?.length ?? 0;
-            const exceptionCount = row.report?.exceptions?.length ?? 0;
-            const chainLength = row.report?.ownershipChain?.length ?? 0;
-            const latestOwner = row.report?.ownershipChain?.at(-1)?.grantee;
-            const riskLevel = exceptionCount === 0 ? 'clean' : exceptionCount <= 2 ? 'medium' : 'high';
+      {/* Detail view OR list */}
+      <AnimatePresence mode="wait">
+        {selected ? (
+          <SearchDetail key={selected.id} row={selected} onClose={() => setSelected(null)} />
+        ) : (
+          !loading && !error && searches.length > 0 && (
+            <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <div className="space-y-4">
+                {searches.map((row, i) => {
+                  const lienCount = row.report?.liens?.length ?? 0;
+                  const exceptionCount = row.report?.exceptions?.length ?? 0;
+                  const chainLength = row.report?.ownershipChain?.length ?? 0;
+                  const latestOwner = row.report?.ownershipChain?.at(-1)?.grantee;
+                  const riskLevel = exceptionCount === 0 ? 'clean' : exceptionCount <= 2 ? 'medium' : 'high';
+                  const hasScreenshots = row.screenshots && row.screenshots.length > 0;
 
-            return (
-              <motion.div
-                key={row.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-              >
-                <Card className="border-0 shadow-md shadow-slate-200/50 hover:shadow-lg hover:shadow-slate-200/70 transition-all bg-white overflow-hidden group">
-                  <div className={cn(
-                    "h-1",
-                    riskLevel === 'clean' ? 'bg-green-400' :
-                    riskLevel === 'medium' ? 'bg-yellow-400' : 'bg-red-400'
-                  )} />
-                  <CardContent className="p-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-4 flex-1 min-w-0">
-                        <div className="w-11 h-11 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600 shrink-0">
-                          <Building2 className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-slate-900 text-lg truncate">{row.address}</h3>
-                            <SourceBadge source={row.source} />
-                          </div>
-                          <div className="flex items-center gap-2 text-slate-500 text-sm mt-1 flex-wrap">
-                            <MapPin className="h-3.5 w-3.5 shrink-0" />
-                            <span>{row.county}</span>
-                            {row.parcel_id && (
-                              <>
-                                <span className="text-slate-300">•</span>
-                                <span className="font-mono text-xs">APN: {row.parcel_id}</span>
-                              </>
-                            )}
-                            <span className="text-slate-300">•</span>
-                            <Clock className="h-3.5 w-3.5 shrink-0" />
-                            <span>{new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                          {latestOwner && (
-                            <p className="text-slate-500 text-sm mt-1.5">
-                              Current owner: <span className="font-semibold text-slate-700">{latestOwner}</span>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-6 shrink-0">
-                        {/* Stats */}
-                        <div className="flex gap-4 text-center">
-                          <div>
-                            <div className="text-lg font-bold text-slate-900">{chainLength}</div>
-                            <div className="text-xs text-slate-400 uppercase tracking-wide">Deeds</div>
-                          </div>
-                          <div>
-                            <div className={cn("text-lg font-bold", lienCount > 0 ? 'text-red-600' : 'text-green-600')}>
-                              {lienCount}
+                  return (
+                    <motion.div
+                      key={row.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                    >
+                      <Card
+                        className="border-0 shadow-md shadow-slate-200/50 hover:shadow-lg hover:shadow-slate-200/70 transition-all bg-white overflow-hidden group cursor-pointer"
+                        onClick={() => setSelected(row)}
+                      >
+                        <div className={cn(
+                          "h-1",
+                          riskLevel === 'clean' ? 'bg-green-400' :
+                          riskLevel === 'medium' ? 'bg-yellow-400' : 'bg-red-400'
+                        )} />
+                        <CardContent className="p-6">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-4 flex-1 min-w-0">
+                              <div className="w-11 h-11 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600 shrink-0">
+                                <Building2 className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="font-bold text-slate-900 text-lg truncate">{row.address}</h3>
+                                  <SourceBadge source={row.source} />
+                                  {hasScreenshots && (
+                                    <Badge variant="outline" className="text-xs gap-1 border-green-200 text-green-700 bg-green-50">
+                                      <Camera className="h-3 w-3" />
+                                      {row.screenshots.length}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-slate-500 text-sm mt-1 flex-wrap">
+                                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                  <span>{row.county}</span>
+                                  {row.parcel_id && (
+                                    <>
+                                      <span className="text-slate-300">-</span>
+                                      <span className="font-mono text-xs">APN: {row.parcel_id}</span>
+                                    </>
+                                  )}
+                                  <span className="text-slate-300">-</span>
+                                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                                  <span>{new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                                {latestOwner && (
+                                  <p className="text-slate-500 text-sm mt-1.5">
+                                    Current owner: <span className="font-semibold text-slate-700">{latestOwner}</span>
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-xs text-slate-400 uppercase tracking-wide">Liens</div>
-                          </div>
-                          <div>
-                            {riskLevel === 'clean' ? (
-                              <CheckCircle2 className="h-6 w-6 text-green-500 mx-auto" />
-                            ) : (
-                              <AlertTriangle className={cn("h-6 w-6 mx-auto", riskLevel === 'high' ? 'text-red-500' : 'text-yellow-500')} />
-                            )}
-                            <div className="text-xs text-slate-400 uppercase tracking-wide mt-0.5">
-                              {riskLevel === 'clean' ? 'Clean' : riskLevel === 'medium' ? 'Review' : 'Risks'}
+
+                            <div className="flex items-center gap-6 shrink-0">
+                              <div className="flex gap-4 text-center">
+                                <div>
+                                  <div className="text-lg font-bold text-slate-900">{chainLength}</div>
+                                  <div className="text-xs text-slate-400 uppercase tracking-wide">Deeds</div>
+                                </div>
+                                <div>
+                                  <div className={cn("text-lg font-bold", lienCount > 0 ? 'text-red-600' : 'text-green-600')}>
+                                    {lienCount}
+                                  </div>
+                                  <div className="text-xs text-slate-400 uppercase tracking-wide">Liens</div>
+                                </div>
+                                <div>
+                                  {riskLevel === 'clean' ? (
+                                    <CheckCircle2 className="h-6 w-6 text-green-500 mx-auto" />
+                                  ) : (
+                                    <AlertTriangle className={cn("h-6 w-6 mx-auto", riskLevel === 'high' ? 'text-red-500' : 'text-yellow-500')} />
+                                  )}
+                                  <div className="text-xs text-slate-400 uppercase tracking-wide mt-0.5">
+                                    {riskLevel === 'clean' ? 'Clean' : riskLevel === 'medium' ? 'Review' : 'Risks'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all" />
                             </div>
                           </div>
-                        </div>
-
-                        <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )
+        )}
+      </AnimatePresence>
 
       {/* Stats footer */}
-      {!loading && searches.length > 0 && (
+      {!loading && !selected && searches.length > 0 && (
         <div className="mt-8 text-center text-slate-400 text-sm">
           Showing {searches.length} most recent search{searches.length !== 1 ? 'es' : ''}
-          {' · '}Powered by{' '}
+          {' - '}Powered by{' '}
           <span className="text-slate-600 font-semibold">Amazon Nova Act</span>
           {' + '}
-          <span className="text-slate-600 font-semibold">Neon PostgreSQL</span>
+          <span className="text-slate-600 font-semibold">Turso</span>
         </div>
       )}
     </div>

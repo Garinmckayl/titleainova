@@ -1,5 +1,5 @@
 import { inngest } from '@/lib/inngest';
-import { createJob, updateJob, saveSearch } from '@/lib/turso';
+import { updateJob, saveSearch, type ScreenshotRecord } from '@/lib/turso';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords, type RetrievedDocument } from '@/lib/agents/title-search/record-retrieval';
 import {
@@ -14,14 +14,9 @@ import { getMockDocs } from '@/lib/agents/title-search/mock';
 /**
  * Inngest durable function: title-search/run
  *
- * This runs the entire Title AI pipeline as a durable, background job.
- * Each major step is wrapped in `step.run()` so that Inngest can:
- *   - Retry individual steps on failure
- *   - Resume from the last completed step after a restart
- *   - Provide observability into each step
- *
- * The user can close the browser and return later — the job state is
- * persisted in the `title_jobs` table in Neon PostgreSQL.
+ * Runs the entire Title AI pipeline as a durable, background job.
+ * Each major step is wrapped in `step.run()` for retry + resume.
+ * Uses the streaming sidecar endpoint to capture real Nova Act screenshots.
  */
 export const titleSearchJob = inngest.createFunction(
   {
@@ -52,7 +47,7 @@ export const titleSearchJob = inngest.createFunction(
       return resolved;
     });
 
-    // ── Step 2: Document Retrieval ─────────────────────────────────
+    // ── Step 2: Document Retrieval (with screenshot capture) ───────
     const retrieval = await step.run('document-retrieval', async () => {
       await updateJob(jobId, {
         current_step: 'retrieval',
@@ -60,24 +55,57 @@ export const titleSearchJob = inngest.createFunction(
         log: `Retrieving records for ${county.name}...`,
       });
 
-      // Try Nova Act sidecar first
       const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL || 'http://35.166.228.8:8001';
       let novaActData: any = null;
+      const screenshots: ScreenshotRecord[] = [];
 
+      // Try streaming endpoint to get screenshots
       try {
-        const res = await fetch(`${sidecarUrl}/search`, {
+        const res = await fetch(`${sidecarUrl}/search-stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ address, county: county.name }),
           signal: AbortSignal.timeout(240_000),
         });
-        if (res.ok) {
-          const json = await res.json();
-          novaActData = json.data || json;
-          await updateJob(jobId, {
-            progress_pct: 45,
-            log: `Nova Act extracted ${novaActData?.ownershipChain?.length || 0} deed records.`,
-          });
+
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() ?? '';
+
+            for (const part of parts) {
+              const line = part.trim();
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const evt = JSON.parse(line.slice(6));
+                if (evt.type === 'progress') {
+                  await updateJob(jobId, { log: evt.message });
+                } else if (evt.type === 'screenshot') {
+                  screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
+                  await updateJob(jobId, {
+                    log: `[screenshot] ${evt.label}`,
+                    screenshots: [{ label: evt.label, step: evt.step, data: evt.data }],
+                  });
+                } else if (evt.type === 'result') {
+                  novaActData = evt.data;
+                }
+              } catch { /* skip */ }
+            }
+          }
+
+          if (novaActData) {
+            await updateJob(jobId, {
+              progress_pct: 45,
+              log: `Nova Act extracted ${novaActData?.ownershipChain?.length || 0} deed records.`,
+            });
+          }
         }
       } catch {
         await updateJob(jobId, {
@@ -88,6 +116,7 @@ export const titleSearchJob = inngest.createFunction(
       if (novaActData) {
         return {
           novaActData,
+          screenshots,
           docs: [{
             source: 'Amazon Nova Act — County Recorder Browser Agent',
             url: county.recorderUrl || '',
@@ -115,7 +144,7 @@ export const titleSearchJob = inngest.createFunction(
         });
       }
 
-      return { novaActData: null, docs };
+      return { novaActData: null, screenshots, docs };
     });
 
     // ── Step 3: Chain of Title Analysis ────────────────────────────
@@ -185,13 +214,15 @@ export const titleSearchJob = inngest.createFunction(
       const pdfBuffer = await generateTitleReportPDF(reportData);
       const pdfBase64 = pdfBuffer.toString('base64');
 
-      // Also save to the main searches table
+      // Save to main searches table (with screenshots from retrieval step)
+      const allScreenshots: ScreenshotRecord[] = (retrieval.screenshots ?? []) as ScreenshotRecord[];
       await saveSearch(
         address,
         county.name,
         retrieval.novaActData?.parcelId ?? null,
         retrieval.novaActData?.source ?? 'web_search',
         reportData,
+        allScreenshots,
       ).catch((err) => console.error('[DB] saveSearch failed:', err));
 
       return { ...reportData, pdfBase64 };

@@ -12,6 +12,7 @@
     "@ai-sdk/amazon-bedrock": "^4.0.63",
     "@ai-sdk/react": "^3.0.99",
     "@aws-sdk/client-bedrock-runtime": "^3.995.0",
+    "@libsql/client": "^0.17.0",
     "@rive-app/react-webgl2": "^4.27.0",
     "@streamdown/cjk": "^1.0.2",
     "@streamdown/code": "^1.0.3",

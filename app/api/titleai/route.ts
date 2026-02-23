@@ -4,6 +4,7 @@ import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieva
 import { buildChainOfTitle, detectLiens, assessRisk, generateSummary } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
+import { saveSearch } from '@/lib/turso';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -154,6 +155,15 @@ export async function POST(req: NextRequest) {
 
         const pdfBuffer = await generateTitleReportPDF(reportData);
         const pdfBase64 = pdfBuffer.toString('base64');
+
+        // Persist search to Turso DB (fire-and-forget, non-blocking)
+        saveSearch(
+          address,
+          county.name,
+          novaActData?.parcelId ?? null,
+          novaActData?.source ?? 'web_search',
+          reportData,
+        ).catch((err) => console.error('[Turso] saveSearch failed:', err));
 
         send({ type: 'result', data: { ...reportData, pdfBase64 } });
       } catch (e: any) {

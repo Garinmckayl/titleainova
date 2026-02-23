@@ -282,22 +282,47 @@ def _take_screenshot(nova) -> Optional[str]:
 
 def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[str, None, None]:
     """
-    Real Nova Act streaming with screenshots.
-    Must use @workflow decorator for IAM auth — run in thread so we can
-    still yield SSE events. Screenshots are collected during the run and
-    emitted after the workflow completes.
+    Real Nova Act via AgentCore Browser Tool (ACBT) — cloud-hosted browser.
+    1. BrowserClient.start() → managed browser session in AWS
+    2. generate_ws_headers() → CDP WebSocket URL + SigV4 headers
+    3. NovaAct(cdp_endpoint_url=...) → attach Nova Act to cloud browser
+    4. generate_live_view_url() → stream URL to frontend for iframe embed
+    Screenshots collected during workflow, emitted after.
+    Falls back to local simulation on any error.
     """
     result_holder: dict = {}
     screenshots_collected: List[dict] = []
+    live_view_url_holder: List[str] = []
 
     def _browser_thread():
         ownership_chain: List[dict] = []
         liens: List[dict] = []
         parcel_id: Optional[str] = None
         legal_description: Optional[str] = None
+        browser_client = None
 
         try:
             from pydantic import BaseModel
+            from bedrock_agentcore.tools.browser_client import BrowserClient
+
+            # Start AgentCore Browser Tool session
+            browser_client = BrowserClient(region=os.getenv("AWS_REGION", "us-east-1"))
+            session_id = browser_client.start(
+                session_timeout_seconds=300,
+                viewport={"width": 1440, "height": 900},
+            )
+            print(f"[ACBT] Browser session started: {session_id}")
+
+            # Generate live view URL (valid 300s) — stream to frontend
+            try:
+                live_url = browser_client.generate_live_view_url(expires=300)
+                live_view_url_holder.append(live_url)
+                print(f"[ACBT] Live view URL generated")
+            except Exception as e:
+                print(f"[ACBT] live view URL failed: {e}")
+
+            # Get CDP WebSocket URL + SigV4 headers
+            ws_url, ws_headers = browser_client.generate_ws_headers()
 
             @workflow(
                 workflow_definition_name=WORKFLOW_DEFINITION_NAME,
@@ -309,11 +334,10 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
 
                 with NovaAct(
                     starting_page=county_url,
-                    ignore_https_errors=True,
-                    headless=True,
+                    cdp_endpoint_url=ws_url,
+                    cdp_headers=ws_headers,
                 ) as nova:
 
-                    # Step 1 — search
                     nova.act(
                         f"Search for the property at this address: {address}. "
                         "Type the address into the search field and submit the search."
@@ -322,7 +346,6 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                     if shot:
                         screenshots_collected.append({"label": "Search results", "step": "retrieval", "data": shot})
 
-                    # Step 2 — parcel info
                     class ParcelInfo(BaseModel):
                         parcel_id: str = ""
                         legal_description: str = ""
@@ -336,7 +359,6 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                         parcel_id = info.parcel_id or None
                         legal_description = info.legal_description or None
 
-                    # Step 3 — deed history
                     nova.act(
                         "Click on the property to open its detail page, "
                         "then navigate to deed history, ownership records, or instrument history."
@@ -363,10 +385,7 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
                         history = DeedHistory.model_validate(deed_result.parsed_response)
                         ownership_chain = [d.model_dump() for d in history.deeds]
 
-                    # Step 4 — lien search
-                    nova.act(
-                        f"Search for any tax liens, judgment liens, or encumbrances against: {address}"
-                    )
+                    nova.act(f"Search for any tax liens, judgment liens, or encumbrances against: {address}")
                     shot = _take_screenshot(nova)
                     if shot:
                         screenshots_collected.append({"label": "Lien search", "step": "liens", "data": shot})
@@ -397,39 +416,54 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
             result_holder["liens"] = liens
             result_holder["parcel_id"] = parcel_id
             result_holder["legal_description"] = legal_description
+            result_holder["source"] = "nova_act_agentcore"
 
         except Exception as e:
-            print(f"[NovaAct Thread Error] {type(e).__name__}: {e}")
+            print(f"[ACBT Thread Error] {type(e).__name__}: {e}")
             result_holder["success"] = False
             result_holder["error"] = str(e)
+        finally:
+            if browser_client:
+                try:
+                    browser_client.stop()
+                    print("[ACBT] Browser session stopped")
+                except Exception:
+                    pass
 
-    yield sse("progress", {"step": "lookup", "message": f"Nova Act launching Chromium browser..."})
-    yield sse("progress", {"step": "retrieval", "message": f"Navigating to {county} recorder — searching for \"{address}\"..."})
+    yield sse("progress", {"step": "lookup", "message": "AgentCore Browser Tool — starting cloud browser session..."})
 
     t = threading.Thread(target=_browser_thread, daemon=True)
     t.start()
-    t.join(timeout=180)  # wait up to 3 minutes
+
+    # Emit live view URL as soon as available (poll until thread puts it in)
+    deadline = time.time() + 20
+    while time.time() < deadline and not live_view_url_holder:
+        time.sleep(0.5)
+    if live_view_url_holder:
+        yield sse("live_view", {"url": live_view_url_holder[0]})
+        yield sse("progress", {"step": "retrieval", "message": f"Cloud browser live — navigating to {county} recorder..."})
+
+    t.join(timeout=240)
 
     if not result_holder.get("success"):
-        error_msg = result_holder.get("error", "timeout or unknown error")
-        yield sse("log", {"step": "retrieval", "message": f"Nova Act fallback: {error_msg[:100]}"})
+        error_msg = result_holder.get("error", "timeout or unknown")
+        yield sse("log", {"step": "retrieval", "message": f"ACBT fallback: {error_msg[:120]}"})
         sim = simulate_search(address, county)
         ownership_chain = sim.ownership_chain
         liens = sim.liens
         parcel_id = sim.parcel_id
         legal_description = sim.legal_description
-        source = f"simulation_fallback"
+        source = "simulation_fallback"
     else:
         ownership_chain = result_holder["ownership_chain"]
         liens = result_holder["liens"]
         parcel_id = result_holder["parcel_id"]
         legal_description = result_holder["legal_description"]
-        source = "nova_act_live"
+        source = result_holder["source"]
 
-        yield sse("progress", {"step": "chain", "message": f"Extracted {len(ownership_chain)} deed record(s) from county recorder."})
+        yield sse("progress", {"step": "chain", "message": f"Extracted {len(ownership_chain)} deed record(s)."})
         yield sse("progress", {"step": "liens", "message": f"Found {len(liens)} lien(s)."})
 
-        # Emit screenshots collected during the workflow
         for shot in screenshots_collected:
             yield sse("screenshot", shot)
 
@@ -446,6 +480,7 @@ def _nova_act_stream(address: str, county: str, county_url: str) -> Generator[st
             "source": source,
         }
     })
+
 
 
 def _simulate_stream(address: str, county: str) -> Generator[str, None, None]:

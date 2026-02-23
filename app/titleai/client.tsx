@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   FileText, Search, ShieldCheck, AlertTriangle, Download, 
   CheckCircle2, Building2, MapPin, Loader2, ArrowRight, MessageSquare,
-  Terminal, ChevronDown
+  Terminal, ChevronDown, History
 } from "lucide-react";
 import Link from "next/link";
 import type { TitleReportData, OwnershipNode, Lien, TitleException } from '@/lib/agents/title-search/types';
@@ -48,6 +48,7 @@ export function TitleSearchClient() {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [activeScreenshot, setActiveScreenshot] = useState<Screenshot | null>(null);
+  const [liveViewUrl, setLiveViewUrl] = useState<string | null>(null);
   const [result, setResult] = useState<TitleReportData & { pdfBase64: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -76,6 +77,7 @@ export function TitleSearchClient() {
     setLogs([]);
     setScreenshots([]);
     setActiveScreenshot(null);
+    setLiveViewUrl(null);
     setCurrentStep('lookup');
     setProgressMessage('Initializing Title AI agents...');
     setShowTerminal(true);
@@ -118,6 +120,9 @@ export function TitleSearchClient() {
           } else if (evt.type === 'log') {
             // Detailed log lines from Nova Act sidecar
             addLog(evt.step, evt.message);
+          } else if (evt.type === 'live_view') {
+            setLiveViewUrl(evt.url);
+            addLog('retrieval', '[AgentCore] Cloud browser live — streaming view available');
           } else if (evt.type === 'screenshot') {
             const shot: Screenshot = {
               id: shotIdRef.current++,
@@ -197,6 +202,12 @@ export function TitleSearchClient() {
             <Button variant="outline" className="gap-2 border-yellow-500/20 hover:bg-yellow-500/10">
               <MessageSquare className="h-4 w-4" />
               Chat Mode
+            </Button>
+          </Link>
+          <Link href="/searches">
+            <Button variant="outline" className="gap-2 border-yellow-500/20 hover:bg-yellow-500/10">
+              <History className="h-4 w-4" />
+              History
             </Button>
           </Link>
         </div>
@@ -340,8 +351,28 @@ export function TitleSearchClient() {
                     exit={{ height: 0 }}
                     className="overflow-hidden"
                   >
-                    {/* Live browser screenshot */}
-                    {activeScreenshot && (
+                    {/* AgentCore live browser stream */}
+                    {liveViewUrl && (
+                      <div className="bg-slate-900 border-b border-slate-800 p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                          <span className="text-slate-400 text-xs font-mono">
+                            AgentCore Browser Tool — Live Stream
+                          </span>
+                          <span className="ml-auto text-slate-600 text-xs font-mono">bedrock-agentcore</span>
+                        </div>
+                        <iframe
+                          src={liveViewUrl}
+                          className="w-full rounded-lg border border-slate-700"
+                          style={{ height: '280px' }}
+                          sandbox="allow-scripts allow-same-origin"
+                          title="Nova Act live browser"
+                        />
+                      </div>
+                    )}
+
+                    {/* Live browser screenshot (fallback when no live view) */}
+                    {!liveViewUrl && activeScreenshot && (
                       <div className="bg-slate-900 border-b border-slate-800 p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />

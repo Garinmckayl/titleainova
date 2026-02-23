@@ -34,6 +34,12 @@ async function ensureTable() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // Migrate: add screenshots column to existing tables that lack it
+  try {
+    await db.execute(`ALTER TABLE title_searches ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`);
+  } catch {
+    // Column already exists — ignore "duplicate column" error
+  }
 }
 
 async function ensureJobsTable() {
@@ -53,6 +59,11 @@ async function ensureJobsTable() {
       updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  try {
+    await db.execute(`ALTER TABLE title_jobs ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`);
+  } catch {
+    // Column already exists — ignore
+  }
 }
 
 // ─── Types ─────────────────────────────────────────────────────

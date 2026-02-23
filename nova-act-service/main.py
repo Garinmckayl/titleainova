@@ -39,18 +39,18 @@ except ImportError:
 WORKFLOW_DEFINITION_NAME = "title"
 MODEL_ID = "nova-act-latest"
 
-# County recorder search URLs — verified reachable from EC2 us-west-2
+# County recorder search URLs — verified for deed/title record searches
 COUNTY_URLS = {
-    "Harris County":  "https://www.hcad.org/records/real-property.asp",
-    "Dallas County":  "https://www.dallascad.org/SearchAddr.aspx",
-    "Tarrant County": "https://www.tad.org/",
-    "Bexar County":   "https://www.bcad.org/propertysearch/",
-    "Travis County":  "https://www.traviscad.org/property-search/",
-    "King County":    "https://blue.kingcounty.com/Assessor/eRealProperty/default.aspx",
-    "Cook County":    "https://www.cookcountyassessor.com/search",
-    "Maricopa County":"https://mcassessor.maricopa.gov/",
-    "Orange County":  "https://www.ocassessor.gov/",
-    "San Diego County":"https://arcc.sdcounty.ca.gov/Pages/Assessor-Parcel-Viewer.aspx",
+    "Harris County":  "https://www.cclerk.hctx.net/applications/websearch/RP.aspx",
+    "Dallas County":  "https://dallas.tx.publicsearch.us/",
+    "Tarrant County": "https://tarrant.tx.publicsearch.us/",
+    "Bexar County":   "https://bexar.tx.publicsearch.us/",
+    "Travis County":  "https://www.tccsearch.org/",
+    "King County":    "https://recordsearch.kingcounty.gov/LandmarkWeb/",
+    "Cook County":    "https://ccrd.cookcountyil.gov/RecorderDeedsWeb/",
+    "Maricopa County":"https://recorder.maricopa.gov/recdocdata/",
+    "Orange County":  "https://cr.ocgov.com/recorderworks/",
+    "San Diego County":"https://arcc.sdcounty.ca.gov/Pages/OfficialRecords.aspx",
 }
 
 # ---------------------------------------------------------------------------

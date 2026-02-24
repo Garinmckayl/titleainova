@@ -1,22 +1,20 @@
 import { inngest } from '@/lib/inngest';
-import { updateJob, saveSearch, type ScreenshotRecord } from '@/lib/turso';
+import { updateJob, saveSearch, createReview, type ScreenshotRecord } from '@/lib/turso';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords, type RetrievedDocument } from '@/lib/agents/title-search/record-retrieval';
-import {
-  buildChainOfTitle,
-  detectLiens,
-  assessRisk,
-  generateSummary,
-} from '@/lib/agents/title-search/analysis';
+import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
+import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
+import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested } from '@/lib/notifications';
+import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
 
 /**
  * Inngest durable function: title-search/run
  *
  * Runs the entire Title AI pipeline as a durable, background job.
  * Each major step is wrapped in `step.run()` for retry + resume.
- * Uses the streaming sidecar endpoint to capture real Nova Act screenshots.
+ * Now includes provenance tracking, ALTA compliance, and notifications.
  */
 export const titleSearchJob = inngest.createFunction(
   {
@@ -25,7 +23,7 @@ export const titleSearchJob = inngest.createFunction(
   },
   { event: 'titleai/search.requested' },
   async ({ event, step }) => {
-    const { jobId, address } = event.data as { jobId: string; address: string };
+    const { jobId, address, userId } = event.data as { jobId: string; address: string; userId?: string };
 
     // ── Step 1: County Lookup ──────────────────────────────────────
     const county = await step.run('county-lookup', async () => {
@@ -58,6 +56,8 @@ export const titleSearchJob = inngest.createFunction(
       const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
       let novaActData: any = null;
       const screenshots: ScreenshotRecord[] = [];
+      let sourceType: DataSourceType = 'tavily_search';
+      const citations: SourceCitation[] = [];
 
       // Try streaming endpoint to get screenshots
       try {
@@ -101,6 +101,8 @@ export const titleSearchJob = inngest.createFunction(
           }
 
           if (novaActData) {
+            sourceType = 'nova_act';
+            citations.push(createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || ''));
             await updateJob(jobId, {
               progress_pct: 45,
               log: `Nova Act extracted ${novaActData?.ownershipChain?.length || 0} deed records.`,
@@ -117,6 +119,8 @@ export const titleSearchJob = inngest.createFunction(
         return {
           novaActData,
           screenshots,
+          sourceType,
+          citations,
           docs: [{
             source: 'Amazon Nova Act — County Recorder Browser Agent',
             url: county.recorderUrl || '',
@@ -131,10 +135,14 @@ export const titleSearchJob = inngest.createFunction(
       let docs: any[];
 
       if (!hasTavily) {
+        sourceType = 'mock_demo';
         await updateJob(jobId, { log: 'No search API keys — using demonstration mode.' });
         docs = getMockDocs(address, county.name);
+        citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
       } else {
+        sourceType = 'tavily_search';
         docs = await retrieveCountyRecords(address, county.name);
+        for (const d of docs) { if (d.citation) citations.push(d.citation); }
         if (docs.length === 0) {
           throw new Error('No digital records found. Manual courthouse search may be required.');
         }
@@ -144,48 +152,29 @@ export const titleSearchJob = inngest.createFunction(
         });
       }
 
-      return { novaActData: null, screenshots, docs };
+      return { novaActData: null, screenshots, sourceType, citations, docs };
     });
 
-    // ── Step 3: Chain of Title Analysis ────────────────────────────
-    const chain = await step.run('chain-of-title', async () => {
+    // ── Step 3-5: Enhanced Analysis Pipeline ──────────────────────
+    const analysis = await step.run('analysis-pipeline', async () => {
       await updateJob(jobId, {
         current_step: 'chain',
         progress_pct: 55,
-        log: 'Building chain of title with Amazon Nova Pro...',
+        log: 'Running analysis pipeline with provenance tracking...',
       });
 
-      if (retrieval.novaActData?.ownershipChain?.length) {
-        return retrieval.novaActData.ownershipChain;
-      }
-      return buildChainOfTitle(retrieval.docs as RetrievedDocument[]);
-    });
-
-    // ── Step 4: Lien Detection ─────────────────────────────────────
-    const liens = await step.run('lien-detection', async () => {
-      await updateJob(jobId, {
-        current_step: 'liens',
-        progress_pct: 65,
-        log: 'Scanning for active liens and encumbrances...',
-      });
-
-      if (retrieval.novaActData?.liens?.length) {
-        return retrieval.novaActData.liens;
-      }
-      return detectLiens(retrieval.docs as RetrievedDocument[], county.name);
-    });
-
-    // ── Step 5: Risk Assessment ────────────────────────────────────
-    const { exceptions, summary } = await step.run('risk-assessment', async () => {
-      await updateJob(jobId, {
-        current_step: 'risk',
-        progress_pct: 80,
-        log: 'Assessing title risks with Amazon Nova Pro...',
-      });
-
-      const exc = await assessRisk(chain, liens);
-      const sum = await generateSummary(chain, liens, exc);
-      return { exceptions: exc, summary: sum };
+      return runAnalysisPipeline(
+        retrieval.docs as RetrievedDocument[],
+        address,
+        county.name,
+        retrieval.sourceType as DataSourceType,
+        {
+          parcelId: retrieval.novaActData?.parcelId,
+          legalDescription: retrieval.novaActData?.legalDescription,
+          preExtractedChain: retrieval.novaActData?.ownershipChain,
+          preExtractedLiens: retrieval.novaActData?.liens,
+        }
+      );
     });
 
     // ── Step 6: Generate PDF Report ────────────────────────────────
@@ -193,8 +182,14 @@ export const titleSearchJob = inngest.createFunction(
       await updateJob(jobId, {
         current_step: 'summary',
         progress_pct: 90,
-        log: 'Generating Title Commitment PDF...',
+        log: 'Generating ALTA-compliant Title Commitment PDF...',
       });
+
+      const overallConfidence = computeOverallConfidence(
+        analysis.chain, analysis.liens, analysis.exceptions,
+        retrieval.sourceType as DataSourceType,
+        retrieval.citations as SourceCitation[]
+      );
 
       const reportData = {
         propertyAddress: address,
@@ -202,13 +197,18 @@ export const titleSearchJob = inngest.createFunction(
         reportDate: new Date().toLocaleDateString(),
         parcelId: retrieval.novaActData?.parcelId,
         legalDescription: retrieval.novaActData?.legalDescription,
-        ownershipChain: chain,
-        liens,
-        exceptions,
-        summary,
+        ownershipChain: analysis.chain,
+        liens: analysis.liens,
+        exceptions: analysis.exceptions,
+        summary: analysis.summary,
+        sources: retrieval.citations,
+        overallConfidence,
+        altaScheduleA: analysis.altaScheduleA,
+        altaScheduleB: analysis.altaScheduleB,
+        reviewStatus: 'pending_review' as const,
         dataSource: retrieval.novaActData
-          ? `Amazon Nova Act (${retrieval.novaActData.source?.includes('simulation') ? 'Demo' : 'Live'})`
-          : 'Web Search + Amazon Nova Pro',
+          ? `Amazon Nova Act (${retrieval.novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level}`
+          : `Web Search + Amazon Nova Pro | Confidence: ${overallConfidence.level}`,
       };
 
       const pdfBuffer = await generateTitleReportPDF(reportData);
@@ -216,19 +216,26 @@ export const titleSearchJob = inngest.createFunction(
 
       // Save to main searches table (with screenshots from retrieval step)
       const allScreenshots: ScreenshotRecord[] = (retrieval.screenshots ?? []) as ScreenshotRecord[];
-      await saveSearch(
+      const searchId = await saveSearch(
         address,
         county.name,
         retrieval.novaActData?.parcelId ?? null,
         retrieval.novaActData?.source ?? 'web_search',
         reportData,
         allScreenshots,
-      ).catch((err) => console.error('[DB] saveSearch failed:', err));
+        userId ?? null,
+      ).catch((err) => { console.error('[DB] saveSearch failed:', err); return null; });
 
-      return { ...reportData, pdfBase64 };
+      // Create review for human-in-the-loop
+      if (searchId) {
+        await createReview(searchId).catch(() => {});
+        await notifyReviewRequested(userId ?? null, searchId, address);
+      }
+
+      return { ...reportData, pdfBase64, searchId };
     });
 
-    // ── Final: Mark job completed ──────────────────────────────────
+    // ── Final: Mark job completed + notify ─────────────────────────
     await step.run('mark-completed', async () => {
       await updateJob(jobId, {
         status: 'completed',
@@ -237,6 +244,7 @@ export const titleSearchJob = inngest.createFunction(
         log: 'Title report generated successfully.',
         result,
       });
+      await notifyJobCompleted(userId ?? null, jobId, address);
     });
 
     return { jobId, status: 'completed' };

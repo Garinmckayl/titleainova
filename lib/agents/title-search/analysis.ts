@@ -1,8 +1,15 @@
 import { generateObject, generateText } from 'ai';
 import { novaPro } from '@/lib/bedrock';
 import { z } from 'zod';
-import { OwnershipNode, Lien, TitleException } from './types';
+import { OwnershipNode, Lien, TitleException, DataSourceType } from './types';
 import { RetrievedDocument } from './record-retrieval';
+import {
+  createCitation,
+  scoreOwnershipChain,
+  scoreLiens,
+  scoreExceptions,
+} from './provenance';
+import { buildScheduleA, buildScheduleB } from './alta-compliance';
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -195,4 +202,58 @@ Tone: Professional title examiner. Do not use filler phrases. Be direct and spec
   } catch (e) {
     return `Title examination complete. ${chain.length} ownership transfers identified. ${activeLiens.length} active liens found. ${exceptions.length} title exceptions noted. Please review the detailed findings below.`;
   }
+}
+
+// ─── Enhanced Pipeline with Provenance + ALTA ────────────────────────────────
+
+/**
+ * Run the full analysis pipeline with provenance tracking and ALTA compliance.
+ * This replaces calling the individual functions separately.
+ */
+export async function runAnalysisPipeline(
+  docs: RetrievedDocument[],
+  address: string,
+  county: string,
+  sourceType: DataSourceType,
+  opts?: {
+    parcelId?: string | null;
+    legalDescription?: string | null;
+    preExtractedChain?: OwnershipNode[];
+    preExtractedLiens?: Lien[];
+  }
+) {
+  // Create source citations from documents
+  const citations = docs.map(d =>
+    createCitation(sourceType, d.source, d.url, {
+      excerpt: d.text.slice(0, 500),
+      documentType: d.type,
+    })
+  );
+
+  // Run AI analysis
+  const rawChain = opts?.preExtractedChain?.length ? opts.preExtractedChain : await buildChainOfTitle(docs);
+  const rawLiens = opts?.preExtractedLiens?.length ? opts.preExtractedLiens : await detectLiens(docs, county);
+  const rawExceptions = await assessRisk(rawChain, rawLiens);
+  const summary = await generateSummary(rawChain, rawLiens, rawExceptions);
+
+  // Attach confidence scores
+  const chain = scoreOwnershipChain(rawChain, sourceType, citations);
+  const liens = scoreLiens(rawLiens, sourceType, citations);
+  const exceptions = scoreExceptions(rawExceptions, sourceType, citations);
+
+  // Build ALTA schedules
+  const altaScheduleA = buildScheduleA(
+    address, county, opts?.legalDescription, chain, new Date().toLocaleDateString()
+  );
+  const altaScheduleB = buildScheduleB(chain, liens, exceptions);
+
+  return {
+    chain,
+    liens,
+    exceptions,
+    summary,
+    citations,
+    altaScheduleA,
+    altaScheduleB,
+  };
 }

@@ -109,6 +109,10 @@ const COUNTY_DB: CountyRecord[] = [
   { name: 'Essex County NJ', state: 'NJ', recorderUrl: 'https://www.essexcountynj.org/county-clerk/', searchUrl: 'https://www.njactb.org/pages/CountyClerk.aspx?Ct=Essex' },
 ];
 
+// Import and merge expansion counties
+import { EXPANSION_COUNTIES, EXPANSION_CITY_MAP } from './county-monitor';
+const ALL_COUNTIES: CountyRecord[] = [...COUNTY_DB, ...EXPANSION_COUNTIES];
+
 /**
  * City → County mapping for fast address resolution
  */
@@ -194,6 +198,8 @@ const CITY_TO_COUNTY: Record<string, string> = {
   greenville: 'Greenville County',     columbia: 'Richland County',
   // New Jersey
   'fort lee': 'Bergen County',         newark: 'Essex County NJ',
+  // Expansion cities (from county-monitor.ts)
+  ...EXPANSION_CITY_MAP,
 };
 
 /** Normalize address string for matching */
@@ -209,7 +215,7 @@ export function lookupCounty(address: string): CountyRecord | null {
   const addr = normalize(address);
 
   // 1. Direct county name match (e.g. "Harris County" in address)
-  for (const record of COUNTY_DB) {
+  for (const record of ALL_COUNTIES) {
     if (addr.includes(record.name.toLowerCase())) {
       return record;
     }
@@ -218,7 +224,7 @@ export function lookupCounty(address: string): CountyRecord | null {
   // 2. State abbreviation + city matching (e.g. "Dallas, TX")
   for (const [city, countyName] of Object.entries(CITY_TO_COUNTY)) {
     if (addr.includes(city.toLowerCase())) {
-      const found = COUNTY_DB.find(r => r.name === countyName);
+      const found = ALL_COUNTIES.find(r => r.name === countyName);
       if (found) return found;
     }
   }
@@ -228,9 +234,14 @@ export function lookupCounty(address: string): CountyRecord | null {
   if (stateMatch) {
     const state = stateMatch[1].toUpperCase();
     // Return the most populous county for that state as a best-effort
-    const fallback = COUNTY_DB.find(r => r.state === state);
+    const fallback = ALL_COUNTIES.find(r => r.state === state);
     if (fallback) return fallback;
   }
 
   return null;
+}
+
+/** Export all counties for monitoring and coverage analysis */
+export function getAllCounties(): CountyRecord[] {
+  return ALL_COUNTIES;
 }

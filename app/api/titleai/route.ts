@@ -2,10 +2,13 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
-import { buildChainOfTitle, detectLiens, assessRisk, generateSummary } from '@/lib/agents/title-search/analysis';
+import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
-import { saveSearch, type ScreenshotRecord } from '@/lib/turso';
+import { saveSearch, createReview, type ScreenshotRecord } from '@/lib/turso';
+import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
+import { notifyReviewRequested } from '@/lib/notifications';
+import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -110,14 +113,24 @@ export async function POST(req: NextRequest) {
 
         const novaActData = await streamNovaActSearch(address, county.name, send, collectedScreenshots);
         let docs: any[] = [];
+        let sourceType: DataSourceType = 'tavily_search';
+        const citations: SourceCitation[] = [];
 
         if (novaActData) {
+          sourceType = 'nova_act';
           send({ type: 'progress', step: 'chain', message: `Nova Act extracted ${novaActData.ownershipChain?.length || 0} deed records from county recorder.` });
+
+          const citation = createCitation('nova_act', `${county.name} Official Records — Nova Act Browser Agent`, county.recorderUrl || '', {
+            documentType: 'County Recorder Official Records',
+          });
+          citations.push(citation);
+
           docs = [{
             source: 'Amazon Nova Act — County Recorder Browser Agent',
             url: county.recorderUrl || '',
             text: JSON.stringify(novaActData),
             type: 'NovaAct',
+            citation,
           }];
         } else {
           send({ type: 'log', step: 'retrieval', message: `Falling back to web search for ${county.name}...` });
@@ -125,44 +138,66 @@ export async function POST(req: NextRequest) {
           const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
           const hasGoogle = process.env.GOOGLE_SEARCH_API_KEY && !process.env.GOOGLE_SEARCH_API_KEY.startsWith('your_');
           if (!hasTavily && !hasGoogle) {
+            sourceType = 'mock_demo';
             send({ type: 'log', step: 'retrieval', message: 'No search API keys — using demonstration mode.' });
             docs = getMockDocs(address, county.name);
+            // Add mock citation
+            citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/', {
+              excerpt: 'This is simulated data for demonstration purposes only.',
+            }));
             await new Promise(r => setTimeout(r, 800));
           } else {
+            sourceType = 'tavily_search';
             docs = await retrieveCountyRecords(address, county.name);
             if (docs.length === 0) {
               send({ type: 'error', message: 'No digital records found. A manual courthouse search may be required.' });
               return;
+            }
+            // Collect citations from docs
+            for (const d of docs) {
+              if (d.citation) citations.push(d.citation);
             }
             send({ type: 'log', step: 'retrieval', message: `Analyzed ${docs.length} property records from web search.` });
           }
           send({ type: 'progress', step: 'chain', message: 'Building chain of title with Amazon Nova Pro...' });
         }
 
-        // Step 3: Nova Pro analysis
+        // Step 3: Enhanced analysis pipeline with provenance + ALTA
         send({ type: 'progress', step: 'liens', message: 'Scanning for active liens and encumbrances...' });
-        let chain = novaActData?.ownershipChain?.length ? novaActData.ownershipChain : await buildChainOfTitle(docs);
-        let liens = novaActData?.liens?.length ? novaActData.liens : await detectLiens(docs, county.name);
-
         send({ type: 'progress', step: 'risk', message: 'Assessing title risks with Amazon Nova Pro...' });
-        const exceptions = await assessRisk(chain, liens);
-        const summary = await generateSummary(chain, liens, exceptions);
+
+        const analysis = await runAnalysisPipeline(docs, address, county.name, sourceType, {
+          parcelId: novaActData?.parcelId,
+          legalDescription: novaActData?.legalDescription,
+          preExtractedChain: novaActData?.ownershipChain,
+          preExtractedLiens: novaActData?.liens,
+        });
+
+        // Compute overall confidence
+        const overallConfidence = computeOverallConfidence(
+          analysis.chain, analysis.liens, analysis.exceptions, sourceType, citations
+        );
 
         // Step 4: PDF Report
-        send({ type: 'progress', step: 'summary', message: 'Generating Title Commitment PDF...' });
+        send({ type: 'progress', step: 'summary', message: 'Generating ALTA-compliant Title Commitment PDF...' });
         const reportData = {
           propertyAddress: address,
           county: county.name,
           reportDate: new Date().toLocaleDateString(),
           parcelId: novaActData?.parcelId,
           legalDescription: novaActData?.legalDescription,
-          ownershipChain: chain,
-          liens,
-          exceptions,
-          summary,
+          ownershipChain: analysis.chain,
+          liens: analysis.liens,
+          exceptions: analysis.exceptions,
+          summary: analysis.summary,
+          sources: citations,
+          overallConfidence,
+          altaScheduleA: analysis.altaScheduleA,
+          altaScheduleB: analysis.altaScheduleB,
+          reviewStatus: 'pending_review' as const,
           dataSource: novaActData
-            ? `Amazon Nova Act — County Recorder Browser Agent (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'})`
-            : 'Web Search + Amazon Nova Pro',
+            ? `Amazon Nova Act — County Recorder Browser Agent (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`
+            : `Web Search + Amazon Nova Pro | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`,
         };
 
         const pdfBuffer = await generateTitleReportPDF(reportData);
@@ -179,6 +214,15 @@ export async function POST(req: NextRequest) {
             collectedScreenshots,
             userId,
           );
+
+          // Create a review record for human-in-the-loop
+          try {
+            await createReview(searchId);
+            await notifyReviewRequested(userId, searchId, address);
+          } catch (err) {
+            console.error('[Review] createReview failed:', err);
+          }
+
           send({ type: 'result', data: { ...reportData, pdfBase64, searchId } });
         } catch (err: any) {
           console.error('[Turso] saveSearch failed:', err);

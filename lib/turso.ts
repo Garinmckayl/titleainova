@@ -6,6 +6,14 @@
  *   TURSO_AUTH_TOKEN=your-token
  */
 import { createClient, type Client } from '@libsql/client';
+import type {
+  ReviewStatus,
+  ReviewComment,
+  ReviewRecord,
+  NotificationChannel,
+  NotificationEvent,
+  NotificationConfig,
+} from '@/lib/agents/title-search/types';
 
 let _client: Client | null = null;
 
@@ -39,6 +47,7 @@ async function ensureTable() {
   const migrations = [
     `ALTER TABLE title_searches ADD COLUMN screenshots TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE title_searches ADD COLUMN user_id TEXT`,
+    `ALTER TABLE title_searches ADD COLUMN review_status TEXT DEFAULT 'pending_review'`,
   ];
   for (const sql of migrations) {
     try { await db.execute(sql); } catch { /* column already exists */ }
@@ -72,6 +81,54 @@ async function ensureJobsTable() {
   }
 }
 
+async function ensureReviewsTable() {
+  const db = getClient();
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS title_reviews (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      search_id       INTEGER NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'pending_review',
+      assigned_to     TEXT,
+      assigned_at     TEXT,
+      comments        TEXT NOT NULL DEFAULT '[]',
+      final_decision  TEXT,
+      final_decision_by TEXT,
+      final_decision_at TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (search_id) REFERENCES title_searches(id)
+    )
+  `);
+}
+
+async function ensureNotificationsTable() {
+  const db = getClient();
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS notification_configs (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT NOT NULL,
+      channel     TEXT NOT NULL,
+      event       TEXT NOT NULL,
+      webhook_url TEXT,
+      email       TEXT,
+      enabled     INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS notification_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT,
+      event       TEXT NOT NULL,
+      channel     TEXT NOT NULL,
+      payload     TEXT NOT NULL DEFAULT '{}',
+      status      TEXT NOT NULL DEFAULT 'sent',
+      error       TEXT,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+}
+
 // ─── Types ─────────────────────────────────────────────────────
 
 export interface ScreenshotRecord {
@@ -88,6 +145,7 @@ export interface TitleSearchRow {
   source: string | null;
   report: any;
   screenshots: ScreenshotRecord[];
+  review_status: ReviewStatus;
   created_at: string;
 }
 
@@ -129,8 +187,8 @@ export async function saveSearch(
   await ensureTable();
   const db = getClient();
   const rs = await db.execute({
-    sql: `INSERT INTO title_searches (user_id, address, county, parcel_id, source, report, screenshots)
-          VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    sql: `INSERT INTO title_searches (user_id, address, county, parcel_id, source, report, screenshots, review_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review') RETURNING id`,
     args: [userId, address, county, parcelId, source, JSON.stringify(report), JSON.stringify(screenshots)],
   });
   return rs.rows[0].id as number;
@@ -141,12 +199,12 @@ export async function getRecentSearches(limit = 20, userId: string | null = null
   const db = getClient();
   const rs = userId
     ? await db.execute({
-        sql: `SELECT id, address, county, parcel_id, source, report, screenshots, created_at
+        sql: `SELECT id, address, county, parcel_id, source, report, screenshots, review_status, created_at
               FROM title_searches WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
         args: [userId, limit],
       })
     : await db.execute({
-        sql: `SELECT id, address, county, parcel_id, source, report, screenshots, created_at
+        sql: `SELECT id, address, county, parcel_id, source, report, screenshots, review_status, created_at
               FROM title_searches ORDER BY id DESC LIMIT ?`,
         args: [limit],
       });
@@ -158,6 +216,7 @@ export async function getRecentSearches(limit = 20, userId: string | null = null
     source: r.source as string | null,
     report: parseJson(r.report, {}),
     screenshots: parseJson(r.screenshots, []),
+    review_status: (r.review_status as ReviewStatus) || 'pending_review',
     created_at: String(r.created_at),
   }));
 }
@@ -176,8 +235,18 @@ export async function getSearch(id: number): Promise<TitleSearchRow | null> {
     source: r.source as string | null,
     report: parseJson(r.report, {}),
     screenshots: parseJson(r.screenshots, []),
+    review_status: (r.review_status as ReviewStatus) || 'pending_review',
     created_at: String(r.created_at),
   };
+}
+
+export async function updateSearchReviewStatus(id: number, status: ReviewStatus): Promise<void> {
+  await ensureTable();
+  const db = getClient();
+  await db.execute({
+    sql: `UPDATE title_searches SET review_status = ? WHERE id = ?`,
+    args: [status, id],
+  });
 }
 
 // ─── Durable Jobs CRUD ────────────────────────────────────────
@@ -287,4 +356,153 @@ export async function getRecentJobs(limit = 20, userId: string | null = null): P
     created_at: String(r.created_at),
     updated_at: String(r.updated_at),
   }));
+}
+
+// ─── Reviews CRUD ─────────────────────────────────────────────
+
+export async function createReview(searchId: number, assignedTo?: string): Promise<number> {
+  await ensureReviewsTable();
+  const db = getClient();
+  const rs = await db.execute({
+    sql: `INSERT INTO title_reviews (search_id, status, assigned_to, assigned_at)
+          VALUES (?, 'pending_review', ?, ?) RETURNING id`,
+    args: [searchId, assignedTo ?? null, assignedTo ? new Date().toISOString() : null],
+  });
+  await updateSearchReviewStatus(searchId, 'pending_review');
+  return rs.rows[0].id as number;
+}
+
+export async function getReview(searchId: number): Promise<ReviewRecord | null> {
+  await ensureReviewsTable();
+  const db = getClient();
+  const rs = await db.execute({
+    sql: `SELECT * FROM title_reviews WHERE search_id = ? ORDER BY id DESC LIMIT 1`,
+    args: [searchId],
+  });
+  if (!rs.rows.length) return null;
+  const r = rs.rows[0];
+  return {
+    searchId: r.search_id as number,
+    status: r.status as ReviewStatus,
+    assignedTo: r.assigned_to as string | undefined,
+    assignedAt: r.assigned_at as string | undefined,
+    comments: parseJson(r.comments, []),
+    finalDecision: r.final_decision as 'approved' | 'rejected' | undefined,
+    finalDecisionBy: r.final_decision_by as string | undefined,
+    finalDecisionAt: r.final_decision_at as string | undefined,
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
+export async function addReviewComment(
+  searchId: number,
+  comment: ReviewComment
+): Promise<void> {
+  await ensureReviewsTable();
+  const db = getClient();
+  await db.execute({
+    sql: `UPDATE title_reviews
+          SET comments = json_insert(comments, '$[#]', json(?)),
+              status = 'in_review',
+              updated_at = datetime('now')
+          WHERE search_id = ?`,
+    args: [JSON.stringify(comment), searchId],
+  });
+  await updateSearchReviewStatus(searchId, 'in_review');
+}
+
+export async function finalizeReview(
+  searchId: number,
+  decision: 'approved' | 'rejected',
+  decidedBy: string
+): Promise<void> {
+  await ensureReviewsTable();
+  const db = getClient();
+  const newStatus: ReviewStatus = decision === 'approved' ? 'approved' : 'rejected';
+  await db.execute({
+    sql: `UPDATE title_reviews
+          SET status = ?, final_decision = ?, final_decision_by = ?,
+              final_decision_at = datetime('now'), updated_at = datetime('now')
+          WHERE search_id = ?`,
+    args: [newStatus, decision, decidedBy, searchId],
+  });
+  await updateSearchReviewStatus(searchId, newStatus);
+}
+
+export async function getPendingReviews(limit = 50): Promise<ReviewRecord[]> {
+  await ensureReviewsTable();
+  const db = getClient();
+  const rs = await db.execute({
+    sql: `SELECT * FROM title_reviews WHERE status IN ('pending_review', 'in_review')
+          ORDER BY created_at ASC LIMIT ?`,
+    args: [limit],
+  });
+  return rs.rows.map(r => ({
+    searchId: r.search_id as number,
+    status: r.status as ReviewStatus,
+    assignedTo: r.assigned_to as string | undefined,
+    assignedAt: r.assigned_at as string | undefined,
+    comments: parseJson(r.comments, []),
+    finalDecision: r.final_decision as 'approved' | 'rejected' | undefined,
+    finalDecisionBy: r.final_decision_by as string | undefined,
+    finalDecisionAt: r.final_decision_at as string | undefined,
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  }));
+}
+
+// ─── Notifications CRUD ───────────────────────────────────────
+
+export async function saveNotificationConfig(config: NotificationConfig): Promise<number> {
+  await ensureNotificationsTable();
+  const db = getClient();
+  const rs = await db.execute({
+    sql: `INSERT INTO notification_configs (user_id, channel, event, webhook_url, email, enabled)
+          VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+    args: [config.userId, config.channel, config.event, config.webhookUrl ?? null, config.email ?? null, config.enabled ? 1 : 0],
+  });
+  return rs.rows[0].id as number;
+}
+
+export async function getNotificationConfigs(
+  userId: string,
+  event?: NotificationEvent
+): Promise<NotificationConfig[]> {
+  await ensureNotificationsTable();
+  const db = getClient();
+  const rs = event
+    ? await db.execute({
+        sql: `SELECT * FROM notification_configs WHERE user_id = ? AND event = ? AND enabled = 1`,
+        args: [userId, event],
+      })
+    : await db.execute({
+        sql: `SELECT * FROM notification_configs WHERE user_id = ?`,
+        args: [userId],
+      });
+  return rs.rows.map(r => ({
+    userId: r.user_id as string,
+    channel: r.channel as NotificationChannel,
+    event: r.event as NotificationEvent,
+    webhookUrl: r.webhook_url as string | undefined,
+    email: r.email as string | undefined,
+    enabled: r.enabled === 1,
+  }));
+}
+
+export async function logNotification(
+  userId: string | null,
+  event: string,
+  channel: string,
+  payload: object,
+  status: 'sent' | 'failed' = 'sent',
+  error?: string
+): Promise<void> {
+  await ensureNotificationsTable();
+  const db = getClient();
+  await db.execute({
+    sql: `INSERT INTO notification_log (user_id, event, channel, payload, status, error)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [userId, event, channel, JSON.stringify(payload), status, error ?? null],
+  });
 }

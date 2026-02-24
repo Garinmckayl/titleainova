@@ -1,4 +1,6 @@
 import { searchTavily } from '@/lib/tools/tavily';
+import { createCitation } from './provenance';
+import { SourceCitation, DataSourceType } from './types';
 
 // Helper to fetch text from a URL (simple scraper fallback)
 async function fetchWebPageText(url: string): Promise<string | null> {
@@ -32,10 +34,19 @@ export interface RetrievedDocument {
   source: string;
   url: string;
   text: string;
-  type: 'PDF' | 'WebPage';
+  type: 'PDF' | 'WebPage' | 'NovaAct';
+  /** Source citation for provenance tracking */
+  citation?: SourceCitation;
 }
 
-export async function retrieveCountyRecords(address: string, county: string): Promise<RetrievedDocument[]> {
+/**
+ * Retrieve county records via web search with provenance tracking.
+ * Returns documents along with their source citations.
+ */
+export async function retrieveCountyRecords(
+  address: string,
+  county: string
+): Promise<RetrievedDocument[]> {
   const coreAddress = address.replace(/,.*$/, '');
 
   const queries = [
@@ -77,11 +88,18 @@ export async function retrieveCountyRecords(address: string, county: string): Pr
     if (!res.url.toLowerCase().endsWith('.pdf')) {
       const content = res.content || await fetchWebPageText(res.url) || undefined;
       if (content) {
+        const sourceType: DataSourceType = 'tavily_search';
+        const citation = createCitation(sourceType, res.title, res.url, {
+          excerpt: content.slice(0, 500),
+          documentType: 'WebPage',
+        });
+
         documents.push({
           source: res.title,
           url: res.url,
           text: content,
           type: 'WebPage',
+          citation,
         });
       }
     }

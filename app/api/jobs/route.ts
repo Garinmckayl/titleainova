@@ -2,22 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { auth } from '@clerk/nextjs/server';
 import { inngest } from '@/lib/inngest';
-import { createJob, getJob, getRecentJobs, updateJob, type ScreenshotRecord } from '@/lib/turso';
+import { createJob, getJob, getRecentJobs, updateJob, saveSearch, createReview, type ScreenshotRecord } from '@/lib/turso';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
-import { buildChainOfTitle, detectLiens, assessRisk, generateSummary } from '@/lib/agents/title-search/analysis';
+import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
-import { saveSearch } from '@/lib/turso';
+import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
+import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested } from '@/lib/notifications';
+import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
  * Run title search directly (no Inngest) as a background async task.
- * Used when Inngest is not configured.
+ * Uses the enhanced pipeline with provenance + ALTA compliance.
  */
-async function runDirectSearch(jobId: string, address: string) {
+async function runDirectSearch(jobId: string, address: string, userId: string | null = null) {
   try {
     // Step 1: County lookup
     await updateJob(jobId, { status: 'running', current_step: 'lookup', progress_pct: 10, log: 'Identifying county and recorder office...' });
@@ -29,6 +31,8 @@ async function runDirectSearch(jobId: string, address: string) {
     await updateJob(jobId, { current_step: 'retrieval', progress_pct: 30, log: `Retrieving records for ${county.name}...` });
     const screenshots: ScreenshotRecord[] = [];
     let novaActData: any = null;
+    let sourceType: DataSourceType = 'tavily_search';
+    const citations: SourceCitation[] = [];
     const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
 
     try {
@@ -68,52 +72,70 @@ async function runDirectSearch(jobId: string, address: string) {
 
     let docs: any[] = [];
     if (novaActData) {
+      sourceType = 'nova_act';
       await updateJob(jobId, { progress_pct: 45, log: `Nova Act extracted ${novaActData?.ownershipChain?.length || 0} deed records.` });
-      docs = [{ source: 'Nova Act', url: county.recorderUrl || '', text: JSON.stringify(novaActData), type: 'NovaAct' }];
+      const citation = createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || '');
+      citations.push(citation);
+      docs = [{ source: 'Nova Act', url: county.recorderUrl || '', text: JSON.stringify(novaActData), type: 'NovaAct', citation }];
     } else {
       const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
       if (!hasTavily) {
+        sourceType = 'mock_demo';
         await updateJob(jobId, { log: 'No search API keys — using demonstration mode.' });
         docs = getMockDocs(address, county.name);
+        citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
       } else {
+        sourceType = 'tavily_search';
         docs = await retrieveCountyRecords(address, county.name);
+        for (const d of docs) { if (d.citation) citations.push(d.citation); }
         await updateJob(jobId, { progress_pct: 45, log: `Analyzed ${docs.length} records from web search.` });
       }
     }
 
-    // Step 3: Chain
-    await updateJob(jobId, { current_step: 'chain', progress_pct: 55, log: 'Building chain of title with Amazon Nova Pro...' });
-    const chain = novaActData?.ownershipChain?.length ? novaActData.ownershipChain : await buildChainOfTitle(docs);
+    // Step 3-5: Enhanced analysis pipeline
+    await updateJob(jobId, { current_step: 'chain', progress_pct: 55, log: 'Running analysis pipeline with provenance tracking...' });
 
-    // Step 4: Liens
-    await updateJob(jobId, { current_step: 'liens', progress_pct: 65, log: 'Scanning for active liens and encumbrances...' });
-    const liens = novaActData?.liens?.length ? novaActData.liens : await detectLiens(docs, county.name);
+    const analysis = await runAnalysisPipeline(docs, address, county.name, sourceType, {
+      parcelId: novaActData?.parcelId,
+      legalDescription: novaActData?.legalDescription,
+      preExtractedChain: novaActData?.ownershipChain,
+      preExtractedLiens: novaActData?.liens,
+    });
 
-    // Step 5: Risk
-    await updateJob(jobId, { current_step: 'risk', progress_pct: 80, log: 'Assessing title risks with Amazon Nova Pro...' });
-    const exceptions = await assessRisk(chain, liens);
-    const summary = await generateSummary(chain, liens, exceptions);
+    const overallConfidence = computeOverallConfidence(
+      analysis.chain, analysis.liens, analysis.exceptions, sourceType, citations
+    );
 
     // Step 6: Report
-    await updateJob(jobId, { current_step: 'summary', progress_pct: 90, log: 'Generating Title Commitment PDF...' });
+    await updateJob(jobId, { current_step: 'summary', progress_pct: 90, log: 'Generating ALTA-compliant Title Commitment PDF...' });
     const reportData = {
       propertyAddress: address,
       county: county.name,
       reportDate: new Date().toLocaleDateString(),
       parcelId: novaActData?.parcelId,
       legalDescription: novaActData?.legalDescription,
-      ownershipChain: chain,
-      liens,
-      exceptions,
-      summary,
+      ownershipChain: analysis.chain,
+      liens: analysis.liens,
+      exceptions: analysis.exceptions,
+      summary: analysis.summary,
+      sources: citations,
+      overallConfidence,
+      altaScheduleA: analysis.altaScheduleA,
+      altaScheduleB: analysis.altaScheduleB,
+      reviewStatus: 'pending_review' as const,
       dataSource: novaActData
-        ? `Amazon Nova Act (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'})`
-        : 'Web Search + Amazon Nova Pro',
+        ? `Amazon Nova Act (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level}`
+        : `Web Search + Amazon Nova Pro | Confidence: ${overallConfidence.level}`,
     };
     const pdfBuffer = await generateTitleReportPDF(reportData);
     const pdfBase64 = pdfBuffer.toString('base64');
 
-    await saveSearch(address, county.name, novaActData?.parcelId ?? null, novaActData?.source ?? 'web_search', reportData, screenshots).catch(() => {});
+    // Save and create review
+    const searchId = await saveSearch(address, county.name, novaActData?.parcelId ?? null, novaActData?.source ?? 'web_search', reportData, screenshots, userId).catch(() => null);
+    if (searchId) {
+      await createReview(searchId).catch(() => {});
+      await notifyReviewRequested(userId, searchId, address);
+    }
 
     await updateJob(jobId, {
       status: 'completed',
@@ -122,8 +144,12 @@ async function runDirectSearch(jobId: string, address: string) {
       log: 'Title report generated successfully.',
       result: { ...reportData, pdfBase64 },
     });
+
+    // Send completion notification
+    await notifyJobCompleted(userId, jobId, address);
   } catch (err: any) {
     await updateJob(jobId, { status: 'failed', error: err.message || 'Unknown error', log: `ERROR: ${err.message}` }).catch(() => {});
+    await notifyJobFailed(userId, jobId, address, err.message || 'Unknown error');
   }
 }
 
@@ -146,16 +172,15 @@ export async function POST(req: NextRequest) {
       try {
         await inngest.send({
           name: 'titleai/search.requested',
-          data: { jobId, address: address.trim() },
+          data: { jobId, address: address.trim(), userId },
         });
       } catch (err: any) {
         console.error('[Inngest send failed, running directly]', err.message);
-        // Fire-and-forget direct execution
-        runDirectSearch(jobId, address.trim());
+        runDirectSearch(jobId, address.trim(), userId);
       }
     } else {
       // No Inngest configured — run the search directly (non-blocking)
-      runDirectSearch(jobId, address.trim());
+      runDirectSearch(jobId, address.trim(), userId);
     }
 
     return NextResponse.json({ success: true, jobId });

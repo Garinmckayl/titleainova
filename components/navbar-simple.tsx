@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
-import { Building2, Menu, X } from "lucide-react";
+import { Building2, Menu, X, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -16,19 +17,38 @@ const NAV_LINKS = [
   { href: "/monitoring", label: "Monitoring" },
 ];
 
+/* ── Clerk components loaded client-side only ────────────────── */
+
+const ClerkDesktopUser = dynamic(
+  () => import("./navbar-clerk").then((m) => m.ClerkDesktopUser),
+  { ssr: false }
+);
+
+const ClerkMobileUser = dynamic(
+  () => import("./navbar-clerk").then((m) => m.ClerkMobileUser),
+  { ssr: false }
+);
+
+const ClerkMobileSignIn = dynamic(
+  () => import("./navbar-clerk").then((m) => m.ClerkMobileSignIn),
+  { ssr: false }
+);
+
+/* ── Main Navbar ─────────────────────────────────────────────── */
+
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <nav className="sticky top-0 z-50 bg-[#fefce8]/80 backdrop-blur-md border-b border-yellow-200/50">
-      <div className="container mx-auto px-6 py-3 flex items-center justify-between">
+      <div className="container mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <div className="w-8 h-8 rounded-lg bg-yellow-500 flex items-center justify-center shadow-sm">
             <Building2 className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-slate-900">Title AI</span>
+          <span className="text-xl font-bold text-slate-900 hidden sm:block">Title AI</span>
         </Link>
 
         {/* Desktop Nav */}
@@ -52,28 +72,46 @@ export function Navbar() {
               </Link>
             );
           })}
-          <div className="w-px h-6 bg-slate-200 mx-2" />
-          <Link href="/notifications">
-            <Button variant="ghost" size="sm" className="text-slate-500 text-sm">
-              Alerts
-            </Button>
-          </Link>
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden p-2 rounded-lg hover:bg-yellow-100 transition-colors"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          {mobileOpen ? <X className="w-5 h-5 text-slate-700" /> : <Menu className="w-5 h-5 text-slate-700" />}
-        </button>
+        {/* Right side: alerts + profile */}
+        <div className="hidden md:flex items-center gap-2">
+          <Link href="/notifications">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "text-sm gap-1.5",
+                pathname === "/notifications"
+                  ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                  : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              <Bell className="w-4 h-4" />
+              <span className="hidden lg:inline">Alerts</span>
+            </Button>
+          </Link>
+          <div className="w-px h-6 bg-slate-200 mx-1" />
+          <ClerkDesktopUser />
+        </div>
+
+        {/* Mobile: profile + hamburger */}
+        <div className="flex md:hidden items-center gap-2">
+          <ClerkMobileUser />
+          <button
+            className="p-2 rounded-lg hover:bg-yellow-100 transition-colors"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="w-5 h-5 text-slate-700" /> : <Menu className="w-5 h-5 text-slate-700" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Nav */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-yellow-200/50 bg-[#fefce8]/95 backdrop-blur-md px-6 py-4 space-y-1">
+        <div className="md:hidden border-t border-yellow-200/50 bg-[#fefce8]/95 backdrop-blur-md px-4 py-3 space-y-1">
           {[...NAV_LINKS, { href: "/notifications", label: "Alerts" }].map((link) => {
-            const isActive = pathname === link.href;
+            const isActive = pathname === link.href || pathname?.startsWith(link.href + "/");
             return (
               <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}>
                 <div
@@ -89,6 +127,7 @@ export function Navbar() {
               </Link>
             );
           })}
+          <ClerkMobileSignIn />
         </div>
       )}
     </nav>

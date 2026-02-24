@@ -141,7 +141,7 @@ export async function POST(req: Request) {
     tools: {
       run_title_search: {
         description: "Run a full title search on a property address. Deploys AI agents to search county records, build chain of title, detect liens, and generate a risk assessment.",
-        parameters: jsonSchema({
+        inputSchema: jsonSchema({
           type: "object",
           properties: {
             address: {
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
       },
       get_search_report: {
         description: "Retrieve a previously completed title search report by its ID.",
-        parameters: jsonSchema({
+        inputSchema: jsonSchema({
           type: "object",
           properties: {
             searchId: {

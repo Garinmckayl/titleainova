@@ -225,7 +225,7 @@ export function TitleSearchClient() {
             </h1>
             <p className="mt-6 text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
             Replace weeks of manual searches with seconds of AI analysis. 
-            Detailed ownership chains, lien detection, and risk assessment for Texas properties.
+            Detailed ownership chains, lien detection, and risk assessment for any U.S. property.
             </p>
         </motion.div>
       </div>
@@ -282,8 +282,8 @@ export function TitleSearchClient() {
           {[
             '1600 Pennsylvania Ave, Washington, DC',
             '100 Congress Ave, Austin, TX',
-            '2000 Main St, Dallas, TX',
-            '500 Fannin St, Houston, TX',
+            '350 Fifth Ave, New York, NY',
+            '1 Infinite Loop, Cupertino, CA',
           ].map((sample) => (
             <button
               key={sample}

@@ -57,10 +57,10 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="border-t border-slate-800 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs text-slate-500">
-            &copy; 2026 Title AI Nova. Built for Amazon Nova AI Hackathon. Not legal advice.
+            &copy; 2026 Title AI Nova. All rights reserved.
           </p>
           <p className="text-xs text-slate-600">
-            AI-generated reports require review by a licensed title examiner before reliance.
+            ALTA-compliant reports with source provenance and confidence scoring.
           </p>
         </div>
       </div>

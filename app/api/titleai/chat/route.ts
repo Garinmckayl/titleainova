@@ -1,5 +1,5 @@
 import { streamText, convertToModelMessages, tool, stepCountIs } from "ai";
-import { auth } from "@clerk/nextjs/server";
+import { getUserId } from "@/lib/auth";
 import { novaPro } from "@/lib/bedrock";
 import { z } from "zod";
 import { getRecentSearches, getSearch, saveSearch, type ScreenshotRecord } from "@/lib/turso";
@@ -42,7 +42,7 @@ When you run a title search, present results clearly:
 - Risk assessment and exceptions
 - Data source (Nova Act browser agent vs web search)
 
-Your knowledge: property titles, ownership chains, deed types, lien types and priorities, title insurance, Texas/US property law, county recorder systems.
+Your knowledge: property titles, ownership chains, deed types, lien types and priorities, title insurance, US property law, county recorder systems across all 50 states.
 
 Always be thorough but concise. Offer to run a search when users ask about a property.${searchContext}`;
 }
@@ -138,7 +138,7 @@ const getReportTool = {
 };
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  const userId = await getUserId();
   const { messages } = await req.json();
   const systemPrompt = await buildSystemPrompt(userId);
 

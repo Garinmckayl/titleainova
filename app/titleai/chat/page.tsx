@@ -3,11 +3,10 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState } from "react";
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { FileText, Home, History, Building2, Search, AlertTriangle, CheckCircle2, Loader2, MapPin } from "lucide-react";
+import { FileText, Building2, AlertTriangle, CheckCircle2, Loader2, MapPin } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Navbar } from "@/components/navbar-simple";
 import {
   Conversation,
   ConversationContent,
@@ -30,8 +29,8 @@ import {
 } from "@/components/ai-elements/prompt-input";
 
 const STARTERS = [
-  { label: "Run a title search", q: "Run a title search on 1400 Smith St, Houston, TX 77002" },
-  { label: "Check for liens", q: "Search 500 Main Plaza, San Antonio, TX 78205 and tell me about any liens" },
+  { label: "Run a title search", q: "Run a title search on 1600 Pennsylvania Ave, Washington, DC 20500" },
+  { label: "Check for liens", q: "Search 100 Congress Ave, Austin, TX 78701 and tell me about any liens" },
   { label: "Explain title insurance", q: "What is title insurance and why do I need it when buying a home?" },
   { label: "Review past searches", q: "Show me what properties have already been searched" },
 ];
@@ -54,48 +53,8 @@ export default function TitleChatPage() {
   return (
     <TooltipProvider>
     <div className="flex flex-col h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white/95 backdrop-blur shrink-0">
-        <div className="px-6 py-3 flex items-center justify-between max-w-5xl mx-auto">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
-                <Home className="w-4 h-4" />
-                Home
-              </Button>
-            </Link>
-            <Link href="/titleai">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
-                <Search className="w-4 h-4" />
-                Search
-              </Button>
-            </Link>
-            <Link href="/searches">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600">
-                <History className="w-4 h-4" />
-                History
-              </Button>
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600">
-              <Building2 className="w-4 h-4" />
-            </div>
-            <span className="font-bold text-slate-900">Title AI Chat</span>
-            <Badge className="bg-yellow-100 text-yellow-700 border border-yellow-200 text-xs">
-              Nova Pro
-            </Badge>
-          </div>
-
-          <div className="flex gap-2">
-            <Badge variant="outline" className="text-xs gap-1.5 text-slate-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
-              Multi-Agent
-            </Badge>
-          </div>
-        </div>
-      </header>
+      {/* Shared Navbar */}
+      <Navbar />
 
       {/* Messages */}
       <div className="flex-1 overflow-hidden max-w-5xl w-full mx-auto px-4">
@@ -109,7 +68,7 @@ export default function TitleChatPage() {
                 Property Title Assistant
               </h2>
               <p className="text-slate-500 text-center max-w-md">
-                Ask about ownership history, liens, encumbrances, and title risks for any US property.
+              Ask about ownership history, liens, encumbrances, and title risks for any U.S. property.
               </p>
             </div>
 

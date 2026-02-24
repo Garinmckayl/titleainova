@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Title AI — Instant Property Title Reports | Powered by Amazon Nova",
   description:
-    "AI-powered title search for Texas properties. Chain of title, lien detection, risk assessment in seconds. Powered by Amazon Nova Act & Nova Pro.",
+    "AI-powered title search for any U.S. property. Chain of title, lien detection, risk assessment in seconds. Powered by Amazon Nova Act & Nova Pro.",
 };
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;

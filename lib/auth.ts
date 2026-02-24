@@ -4,7 +4,7 @@ const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 /**
  * Get current user ID from Clerk.
- * Returns null if Clerk is not configured (dev/hackathon mode).
+ * Returns null if Clerk is not configured (open access mode).
  */
 export async function getUserId(): Promise<string | null> {
   if (!clerkEnabled) return null;

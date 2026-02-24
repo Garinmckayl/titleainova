@@ -6,53 +6,13 @@ import {
   ArrowRight, CheckCircle2, Globe, TrendingUp, Clock, DollarSign,
   Users, BarChart3, Lock, Layers, Cpu, Workflow
 } from "lucide-react";
+import { Navbar } from "@/components/navbar-simple";
+import { Footer } from "@/components/footer-simple";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#fefce8]">
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-[#fefce8]/80 backdrop-blur-md border-b border-yellow-200/50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-yellow-500 flex items-center justify-center shadow-sm">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-slate-900">Title AI</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/titleai">
-              <Button variant="ghost" className="font-medium text-slate-700 hover:text-slate-900">
-                Search
-              </Button>
-            </Link>
-            <Link href="/titleai/chat">
-              <Button variant="ghost" className="font-medium text-slate-700 hover:text-slate-900">
-                Chat
-              </Button>
-            </Link>
-            <Link href="/jobs">
-              <Button variant="ghost" className="font-medium text-slate-700 hover:text-slate-900">
-                Jobs
-              </Button>
-            </Link>
-            <Link href="/searches">
-              <Button variant="ghost" className="font-medium text-slate-700 hover:text-slate-900">
-                History
-              </Button>
-            </Link>
-            <Link href="/reviews">
-              <Button variant="ghost" className="font-medium text-slate-700 hover:text-slate-900">
-                Reviews
-              </Button>
-            </Link>
-            <Link href="/titleai">
-              <Button className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold shadow-md shadow-yellow-500/25 rounded-xl">
-                Try Free
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Hero */}
       <section className="pt-24 pb-20 px-6">
@@ -62,7 +22,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
             </span>
-            Disrupting a $38 Billion Industry with Amazon Nova | ALTA-Compliant
+            Disrupting a $38 Billion Industry with Amazon Nova
           </div>
 
           <h1 className="text-6xl md:text-8xl font-bold text-slate-900 leading-[1.05] tracking-tight mb-6">
@@ -477,26 +437,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-slate-900 text-slate-400 py-10">
-        <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-yellow-500 flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-white font-bold">Title AI</span>
-          </div>
-          <p className="text-sm text-center">
-            Built for Amazon Nova AI Hackathon 2026 | ALTA-Compliant | 110+ Counties | Human-in-the-Loop Review
-          </p>
-          <div className="flex gap-6 text-sm">
-            <Link href="/titleai" className="hover:text-white transition">Search</Link>
-            <Link href="/jobs" className="hover:text-white transition">Jobs</Link>
-            <Link href="/reviews" className="hover:text-white transition">Reviews</Link>
-            <Link href="/monitoring" className="hover:text-white transition">Monitoring</Link>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

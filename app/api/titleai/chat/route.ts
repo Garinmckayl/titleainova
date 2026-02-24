@@ -1,7 +1,6 @@
-import { streamText, convertToModelMessages, tool, stepCountIs } from "ai";
-import { getUserId } from "@/lib/auth";
+import { streamText, convertToModelMessages, jsonSchema, stepCountIs } from "ai";
+import { auth } from "@clerk/nextjs/server";
 import { novaPro } from "@/lib/bedrock";
-import { z } from "zod";
 import { getRecentSearches, getSearch, saveSearch, type ScreenshotRecord } from "@/lib/turso";
 import { lookupCounty } from "@/lib/agents/title-search/property-lookup";
 import { retrieveCountyRecords } from "@/lib/agents/title-search/record-retrieval";
@@ -47,98 +46,89 @@ Your knowledge: property titles, ownership chains, deed types, lien types and pr
 Always be thorough but concise. Offer to run a search when users ask about a property.${searchContext}`;
 }
 
-// Define tools with explicit typing to satisfy AI SDK v6
-const searchTool = {
-  description: "Run a full title search on a property address. Deploys AI agents to search county records, build chain of title, detect liens, and generate a risk assessment.",
-  parameters: z.object({
-    address: z.string().describe("Full property address, e.g. '1400 Smith St, Houston, TX 77002'"),
-  }),
-  execute: async ({ address }: { address: string }): Promise<Record<string, unknown>> => {
-    try {
-      const c = await lookupCounty(address);
-      const county = c ?? { name: "Unknown County", state: "US", recorderUrl: "", searchUrl: "" };
+/* ── Tool execute functions ──────────────────────────────────── */
 
-      let novaActData: any = null;
-      const screenshots: ScreenshotRecord[] = [];
-      const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
+async function executeSearch({ address }: { address: string }): Promise<Record<string, unknown>> {
+  try {
+    const c = await lookupCounty(address);
+    const county = c ?? { name: "Unknown County", state: "US", recorderUrl: "", searchUrl: "" };
 
-      if (sidecarUrl) {
-        try {
-          const res = await fetch(`${sidecarUrl}/search`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address, county: county.name }),
-            signal: AbortSignal.timeout(120_000),
-          });
-          if (res.ok) {
-            const json = await res.json();
-            novaActData = json.data || json;
-          }
-        } catch { /* sidecar unavailable */ }
-      }
+    let novaActData: any = null;
+    const screenshots: ScreenshotRecord[] = [];
+    const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
 
-      let docs: any[] = [];
-      if (novaActData) {
-        docs = [{ source: "Nova Act", url: county.recorderUrl || "", text: JSON.stringify(novaActData), type: "NovaAct" }];
-      } else {
-        const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith("your_");
-        docs = !hasTavily ? getMockDocs(address, county.name) : await retrieveCountyRecords(address, county.name);
-      }
-
-      const chain = novaActData?.ownershipChain?.length ? novaActData.ownershipChain : await buildChainOfTitle(docs);
-      const liens = novaActData?.liens?.length ? novaActData.liens : await detectLiens(docs, county.name);
-      const exceptions = await assessRisk(chain, liens);
-      const summary = await generateSummary(chain, liens, exceptions);
-
-      const reportData = {
-        propertyAddress: address,
-        county: county.name,
-        reportDate: new Date().toLocaleDateString(),
-        parcelId: novaActData?.parcelId ?? null,
-        legalDescription: novaActData?.legalDescription ?? null,
-        ownershipChain: chain,
-        liens,
-        exceptions,
-        summary,
-        dataSource: novaActData ? "Amazon Nova Act" : "Web Search + Amazon Nova Pro",
-      };
-
-      const searchId = await saveSearch(address, county.name, novaActData?.parcelId ?? null, novaActData?.source ?? "web_search", reportData, screenshots);
-
-      return { success: true, searchId, ...reportData };
-    } catch (err: any) {
-      return { success: false, error: err.message || "Title search failed" };
+    if (sidecarUrl) {
+      try {
+        const res = await fetch(`${sidecarUrl}/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, county: county.name }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          novaActData = json.data || json;
+        }
+      } catch { /* sidecar unavailable */ }
     }
-  },
-};
 
-const getReportTool = {
-  description: "Retrieve a previously completed title search report by its ID.",
-  parameters: z.object({
-    searchId: z.number().describe("The ID of the search to retrieve"),
-  }),
-  execute: async ({ searchId }: { searchId: number }): Promise<Record<string, unknown>> => {
-    try {
-      const row = await getSearch(searchId);
-      if (!row) return { success: false, error: "Search not found" };
-      return {
-        success: true,
-        id: row.id,
-        address: row.address,
-        county: row.county,
-        source: row.source,
-        created_at: row.created_at,
-        screenshotCount: row.screenshots?.length ?? 0,
-        report: row.report,
-      };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    let docs: any[] = [];
+    if (novaActData) {
+      docs = [{ source: "Nova Act", url: county.recorderUrl || "", text: JSON.stringify(novaActData), type: "NovaAct" }];
+    } else {
+      const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith("your_");
+      docs = !hasTavily ? getMockDocs(address, county.name) : await retrieveCountyRecords(address, county.name);
     }
-  },
-};
+
+    const chain = novaActData?.ownershipChain?.length ? novaActData.ownershipChain : await buildChainOfTitle(docs);
+    const liens = novaActData?.liens?.length ? novaActData.liens : await detectLiens(docs, county.name);
+    const exceptions = await assessRisk(chain, liens);
+    const summary = await generateSummary(chain, liens, exceptions);
+
+    const reportData = {
+      propertyAddress: address,
+      county: county.name,
+      reportDate: new Date().toLocaleDateString(),
+      parcelId: novaActData?.parcelId ?? null,
+      legalDescription: novaActData?.legalDescription ?? null,
+      ownershipChain: chain,
+      liens,
+      exceptions,
+      summary,
+      dataSource: novaActData ? "Amazon Nova Act" : "Web Search + Amazon Nova Pro",
+    };
+
+    const searchId = await saveSearch(address, county.name, novaActData?.parcelId ?? null, novaActData?.source ?? "web_search", reportData, screenshots);
+
+    return { success: true, searchId, ...reportData };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Title search failed" };
+  }
+}
+
+async function executeGetReport({ searchId }: { searchId: number }): Promise<Record<string, unknown>> {
+  try {
+    const row = await getSearch(searchId);
+    if (!row) return { success: false, error: "Search not found" };
+    return {
+      success: true,
+      id: row.id,
+      address: row.address,
+      county: row.county,
+      source: row.source,
+      created_at: row.created_at,
+      screenshotCount: row.screenshots?.length ?? 0,
+      report: row.report,
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/* ── Route handler ───────────────────────────────────────────── */
 
 export async function POST(req: Request) {
-  const userId = await getUserId();
+  const { userId } = await auth();
   const { messages } = await req.json();
   const systemPrompt = await buildSystemPrompt(userId);
 
@@ -149,8 +139,34 @@ export async function POST(req: Request) {
     temperature: 0.3,
     stopWhen: stepCountIs(5),
     tools: {
-      run_title_search: searchTool,
-      get_search_report: getReportTool,
+      run_title_search: {
+        description: "Run a full title search on a property address. Deploys AI agents to search county records, build chain of title, detect liens, and generate a risk assessment.",
+        parameters: jsonSchema({
+          type: "object",
+          properties: {
+            address: {
+              type: "string",
+              description: "Full property address, e.g. '1400 Smith St, Houston, TX 77002'",
+            },
+          },
+          required: ["address"],
+        }),
+        execute: executeSearch,
+      },
+      get_search_report: {
+        description: "Retrieve a previously completed title search report by its ID.",
+        parameters: jsonSchema({
+          type: "object",
+          properties: {
+            searchId: {
+              type: "number",
+              description: "The ID of the search to retrieve",
+            },
+          },
+          required: ["searchId"],
+        }),
+        execute: executeGetReport,
+      },
     } as any,
     experimental_telemetry: {
       isEnabled: true,

@@ -15,6 +15,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Navbar } from '@/components/navbar-simple';
+import { Footer } from '@/components/footer-simple';
 
 /* ─── types matching the DB shape ────────────────────────────── */
 type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
@@ -468,26 +470,8 @@ export default function JobsPage() {
 
   /* ── Render ────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#fefce8] to-white">
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 bg-[#fefce8]/80 backdrop-blur-md border-b border-yellow-200/50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-yellow-500 flex items-center justify-center shadow-sm">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-slate-900">Title AI</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/titleai">
-              <Button variant="ghost" size="sm">Instant Search</Button>
-            </Link>
-            <Link href="/searches">
-              <Button variant="ghost" size="sm">History</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-gradient-to-b from-[#fefce8] to-white flex flex-col">
+      <Navbar />
 
       <div className="container mx-auto max-w-5xl px-6 py-12">
         {/* Page Header */}
@@ -646,17 +630,8 @@ export default function JobsPage() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Footer */}
-        <div className="mt-12 text-center text-slate-400 text-sm">
-          Powered by{' '}
-          <span className="text-slate-600 font-semibold">Inngest Durable Execution</span>
-          {' + '}
-          <span className="text-slate-600 font-semibold">Amazon Nova Act</span>
-          {' + '}
-          <span className="text-slate-600 font-semibold">Nova Pro</span>
-        </div>
       </div>
+      <Footer />
     </div>
   );
 }

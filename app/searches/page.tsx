@@ -29,9 +29,11 @@ interface SearchRow {
   parcel_id: string | null;
   source: string | null;
   created_at: string;
+  review_status: string;
   screenshots: ScreenshotRecord[];
   report: {
     summary?: string;
+    overallConfidence?: { level: string; score: number };
     exceptions?: Array<{ type: string; description: string; explanation?: string }>;
     liens?: Array<{ type: string; amount: string; status: string; claimant?: string; dateRecorded?: string; priority?: string }>;
     ownershipChain?: Array<{ grantor: string; grantee: string; date: string; documentType?: string; documentNumber?: string }>;
@@ -329,6 +331,8 @@ export default function SearchesPage() {
                   const latestOwner = row.report?.ownershipChain?.at(-1)?.grantee;
                   const riskLevel = exceptionCount === 0 ? 'clean' : exceptionCount <= 2 ? 'medium' : 'high';
                   const hasScreenshots = row.screenshots && row.screenshots.length > 0;
+                  const reviewStatus = row.review_status || 'pending_review';
+                  const confidence = row.report?.overallConfidence;
 
                   return (
                     <motion.div
@@ -356,12 +360,40 @@ export default function SearchesPage() {
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <h3 className="font-bold text-slate-900 text-lg truncate">{row.address}</h3>
                                   <SourceBadge source={row.source} />
-                                  {hasScreenshots && (
-                                    <Badge variant="outline" className="text-xs gap-1 border-green-200 text-green-700 bg-green-50">
-                                      <Camera className="h-3 w-3" />
-                                      {row.screenshots.length}
-                                    </Badge>
-                                  )}
+                                   {hasScreenshots && (
+                                     <Badge variant="outline" className="text-xs gap-1 border-green-200 text-green-700 bg-green-50">
+                                       <Camera className="h-3 w-3" />
+                                       {row.screenshots.length}
+                                     </Badge>
+                                   )}
+                                   <Badge
+                                     variant="outline"
+                                     className={cn(
+                                       "text-xs gap-1",
+                                       reviewStatus === 'approved' ? 'border-green-200 text-green-700 bg-green-50' :
+                                       reviewStatus === 'rejected' ? 'border-red-200 text-red-700 bg-red-50' :
+                                       reviewStatus === 'in_review' ? 'border-blue-200 text-blue-700 bg-blue-50' :
+                                       'border-yellow-200 text-yellow-700 bg-yellow-50'
+                                     )}
+                                   >
+                                     {reviewStatus === 'pending_review' ? 'Pending Review' :
+                                      reviewStatus === 'in_review' ? 'In Review' :
+                                      reviewStatus === 'approved' ? 'Approved' :
+                                      reviewStatus === 'rejected' ? 'Rejected' : reviewStatus}
+                                   </Badge>
+                                   {confidence && (
+                                     <Badge
+                                       variant="outline"
+                                       className={cn(
+                                         "text-xs",
+                                         confidence.level === 'high' ? 'border-green-200 text-green-700 bg-green-50' :
+                                         confidence.level === 'medium' ? 'border-yellow-200 text-yellow-700 bg-yellow-50' :
+                                         'border-red-200 text-red-700 bg-red-50'
+                                       )}
+                                     >
+                                       {confidence.score}% conf
+                                     </Badge>
+                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 text-slate-500 text-sm mt-1 flex-wrap">
                                   <MapPin className="h-3.5 w-3.5 shrink-0" />

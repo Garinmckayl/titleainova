@@ -507,11 +507,34 @@ export function TitleSearchClient() {
                       <span>{result.legalDescription ? result.legalDescription.slice(0, 50) + '...' : 'Legal Description Retrieved'}</span>
                     </div>
                     {(result as any).dataSource && (
-                      <div className="mt-2">
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <Badge variant="outline" className="text-xs text-slate-500 border-slate-200 gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
                           {(result as any).dataSource}
                         </Badge>
+                        {(result as any).overallConfidence && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs gap-1",
+                              (result as any).overallConfidence.level === 'high' ? 'border-green-200 text-green-700 bg-green-50' :
+                              (result as any).overallConfidence.level === 'medium' ? 'border-yellow-200 text-yellow-700 bg-yellow-50' :
+                              'border-red-200 text-red-700 bg-red-50'
+                            )}
+                          >
+                            Confidence: {(result as any).overallConfidence.score}% ({(result as any).overallConfidence.level})
+                          </Badge>
+                        )}
+                        {(result as any).reviewStatus && (
+                          <Badge variant="outline" className="text-xs border-yellow-200 text-yellow-700 bg-yellow-50">
+                            Pending Review
+                          </Badge>
+                        )}
+                        {(result as any).altaScheduleA?.commitmentNumber && (
+                          <Badge variant="outline" className="text-xs border-purple-200 text-purple-700 bg-purple-50 font-mono">
+                            {(result as any).altaScheduleA.commitmentNumber}
+                          </Badge>
+                        )}
                       </div>
                     )}
                   </div>

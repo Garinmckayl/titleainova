@@ -40,6 +40,11 @@ export default function Home() {
                 History
               </Button>
             </Link>
+            <Link href="/reviews">
+              <Button variant="ghost" className="font-medium text-slate-700 hover:text-slate-900">
+                Reviews
+              </Button>
+            </Link>
             <Link href="/titleai">
               <Button className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold shadow-md shadow-yellow-500/25 rounded-xl">
                 Try Free
@@ -57,7 +62,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
             </span>
-            Disrupting a $38 Billion Industry with Amazon Nova
+            Disrupting a $38 Billion Industry with Amazon Nova | ALTA-Compliant
           </div>
 
           <h1 className="text-6xl md:text-8xl font-bold text-slate-900 leading-[1.05] tracking-tight mb-6">
@@ -111,8 +116,8 @@ export default function Home() {
               <div className="text-sm text-slate-500 mt-1">vs. 2-4 week manual search</div>
             </div>
             <div className="text-center p-4 rounded-2xl bg-white/60 border border-yellow-100">
-              <div className="text-3xl md:text-4xl font-bold text-slate-900">97%</div>
-              <div className="text-sm text-slate-500 mt-1">cost reduction per search</div>
+              <div className="text-3xl md:text-4xl font-bold text-slate-900">110+</div>
+              <div className="text-sm text-slate-500 mt-1">U.S. counties covered</div>
             </div>
             <div className="text-center p-4 rounded-2xl bg-white/60 border border-yellow-100">
               <div className="text-3xl md:text-4xl font-bold text-slate-900">5.5M</div>
@@ -219,11 +224,11 @@ export default function Home() {
               </p>
               <div className="space-y-3">
                 {[
-                  "Nova Act agents autonomously navigate 10+ county recorder portals",
+                  "Nova Act agents autonomously navigate 110+ county recorder portals",
                   "AgentCore Browser Tool provides cloud-hosted Chromium with live streaming",
-                  "Nova Pro extracts structured deed records, instrument numbers, grantor/grantee data",
-                  "Strands-compatible architecture for multi-agent orchestration",
-                  "Inngest-powered durable execution for long-running searches",
+                  "Nova Pro extracts structured deed records with source provenance tracking",
+                  "ALTA-compliant reports with Schedule A/B and confidence scoring",
+                  "Human-in-the-loop review workflow for licensed title examiners",
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-yellow-400 shrink-0" />
@@ -323,10 +328,10 @@ export default function Home() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-slate-600">Coverage</span>
-                    <span className="font-bold text-green-700">10+ counties live</span>
+                    <span className="font-bold text-green-700">110+ counties live</span>
                   </div>
-                  <div className="h-2 bg-green-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: '20%' }} />
+                    <div className="h-2 bg-green-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-green-500 rounded-full" style={{ width: '40%' }} />
                   </div>
                 </div>
                 <div>
@@ -387,13 +392,13 @@ export default function Home() {
               {
                 icon: Lock,
                 title: "Enterprise-Grade Data",
-                desc: "All search results persisted to Neon PostgreSQL with JSONB storage. Full audit trail of every deed, lien, and exception found.",
+                desc: "All search results persisted to Turso (libSQL) with full audit trail. ALTA-compliant reports with source provenance and confidence scoring.",
                 color: "bg-red-50 border-red-200 text-red-600"
               },
               {
                 icon: Globe,
                 title: "Scalable to Every County",
-                desc: "Currently covering 10+ counties across TX, CA, IL, WA, AZ. Architecture supports expansion to all 3,143 U.S. counties.",
+                desc: "Currently covering 110+ counties across 20+ states. Architecture supports expansion to all 3,143 U.S. counties with health monitoring.",
                 color: "bg-orange-50 border-orange-200 text-orange-600"
               },
             ].map((f, i) => (
@@ -482,13 +487,13 @@ export default function Home() {
             <span className="text-white font-bold">Title AI</span>
           </div>
           <p className="text-sm text-center">
-            Built for Amazon Nova AI Hackathon 2026 | Powered by Nova Act + Nova Pro + Inngest Durable Execution
+            Built for Amazon Nova AI Hackathon 2026 | ALTA-Compliant | 110+ Counties | Human-in-the-Loop Review
           </p>
           <div className="flex gap-6 text-sm">
             <Link href="/titleai" className="hover:text-white transition">Search</Link>
             <Link href="/jobs" className="hover:text-white transition">Jobs</Link>
-            <Link href="/titleai/chat" className="hover:text-white transition">Chat</Link>
-            <Link href="/searches" className="hover:text-white transition">History</Link>
+            <Link href="/reviews" className="hover:text-white transition">Reviews</Link>
+            <Link href="/monitoring" className="hover:text-white transition">Monitoring</Link>
           </div>
         </div>
       </footer>

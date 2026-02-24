@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import type { UIMessage } from "ai";
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Image from "next/image";
@@ -19,6 +20,11 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
 import {
   PromptInput,
   PromptInputBody,
@@ -70,6 +76,167 @@ function UserAvatar() {
     <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-white text-xs font-bold ring-2 ring-slate-200 shrink-0">
       {initials}
     </div>
+  );
+}
+
+/* ── MessageParts: handles reasoning + text + tool invocations ── */
+
+function MessageParts({
+  message,
+  isLastMessage,
+  isStreaming,
+}: {
+  message: UIMessage;
+  isLastMessage: boolean;
+  isStreaming: boolean;
+}) {
+  // Consolidate all reasoning parts into one block
+  const reasoningParts = message.parts.filter((p) => p.type === "reasoning");
+  const reasoningText = reasoningParts.map((p) => (p as any).text).join("\n\n");
+  const hasReasoning = reasoningParts.length > 0;
+
+  // Check if reasoning is still streaming
+  const lastPart = message.parts.at(-1);
+  const isReasoningStreaming =
+    isLastMessage && isStreaming && lastPart?.type === "reasoning";
+
+  return (
+    <>
+      {hasReasoning && (
+        <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
+          <ReasoningTrigger />
+          <ReasoningContent>{reasoningText}</ReasoningContent>
+        </Reasoning>
+      )}
+      {message.parts.map((part, i) => {
+        if (part.type === "text") {
+          return (
+            <MessageResponse key={`${message.id}-${i}`}>
+              {part.text}
+            </MessageResponse>
+          );
+        }
+        if (part.type === "tool-invocation") {
+          const inv = part as any;
+          const toolName = inv.toolInvocation?.toolName || inv.toolName;
+          const state = inv.toolInvocation?.state || inv.state;
+          const result = inv.toolInvocation?.result || inv.result;
+
+          /* Loading state */
+          if (state === "call" || state === "partial-call") {
+            return (
+              <div key={`${message.id}-${i}`} className="my-3 p-4 rounded-xl bg-yellow-50 border border-yellow-200 flex items-center gap-3">
+                <Loader2 className="w-5 h-5 text-yellow-600 animate-spin shrink-0" />
+                <div>
+                  <p className="font-semibold text-yellow-800 text-sm">
+                    {toolName === "run_title_search" ? "Running Title Search..." : "Retrieving Report..."}
+                  </p>
+                  <p className="text-xs text-yellow-600">AI agents are analyzing county records</p>
+                </div>
+              </div>
+            );
+          }
+
+          /* Result state */
+          if (state === "result" && result) {
+            if (toolName === "run_title_search" && result.success) {
+              const r = result;
+              return (
+                <div key={`${message.id}-${i}`} className="my-3 space-y-3">
+                  <div className="p-4 rounded-xl bg-green-50 border border-green-200">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                      <span className="font-bold text-green-800">Title Search Complete</span>
+                      <Badge className="bg-green-100 text-green-700 border-green-200 text-xs sm:ml-auto">{r.dataSource}</Badge>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-green-700 flex-wrap">
+                      <MapPin className="w-3.5 h-3.5 shrink-0" />
+                      <span className="font-semibold">{r.propertyAddress}</span>
+                      <span className="text-green-500 hidden sm:inline">-</span>
+                      <span>{r.county}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-3 rounded-lg bg-white border border-slate-100 text-center shadow-sm">
+                      <div className="text-lg font-bold text-slate-900">{r.ownershipChain?.length || 0}</div>
+                      <div className="text-[10px] text-slate-400 uppercase">Deeds</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-white border border-slate-100 text-center shadow-sm">
+                      <div className={`text-lg font-bold ${(r.liens?.length || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>{r.liens?.length || 0}</div>
+                      <div className="text-[10px] text-slate-400 uppercase">Liens</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-white border border-slate-100 text-center shadow-sm">
+                      <div className={`text-lg font-bold ${(r.exceptions?.length || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>{r.exceptions?.length || 0}</div>
+                      <div className="text-[10px] text-slate-400 uppercase">Exceptions</div>
+                    </div>
+                  </div>
+
+                  {r.ownershipChain?.length > 0 && (
+                    <div className="p-3 rounded-lg bg-white border border-slate-100 shadow-sm">
+                      <p className="text-xs font-bold text-slate-500 uppercase mb-2">Ownership Chain</p>
+                      {r.ownershipChain.slice(0, 3).map((n: any, j: number) => (
+                        <div key={j} className="flex items-center gap-2 text-xs text-slate-700 py-1.5 border-b border-slate-50 last:border-0 flex-wrap">
+                          <span className="font-mono text-slate-400 shrink-0">{n.date}</span>
+                          <span className="truncate">{n.grantor}</span>
+                          <span className="text-slate-300 shrink-0">&rarr;</span>
+                          <span className="font-semibold truncate">{n.grantee}</span>
+                        </div>
+                      ))}
+                      {r.ownershipChain.length > 3 && (
+                        <p className="text-[10px] text-slate-400 mt-1.5">+ {r.ownershipChain.length - 3} more records</p>
+                      )}
+                    </div>
+                  )}
+
+                  {r.liens?.length > 0 && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-100">
+                      <p className="text-xs font-bold text-red-500 uppercase mb-2">Active Liens</p>
+                      {r.liens.map((l: any, j: number) => (
+                        <div key={j} className="flex items-center justify-between text-xs text-red-800 py-1.5">
+                          <span className="truncate">{l.claimant || l.type} ({l.type})</span>
+                          <span className="font-mono font-bold shrink-0 ml-2">{l.amount}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {r.searchId && (
+                    <p className="text-[10px] text-slate-400">Saved as search #{r.searchId} — view in History</p>
+                  )}
+                </div>
+              );
+            }
+
+            if (toolName === "run_title_search" && !result.success) {
+              return (
+                <div key={`${message.id}-${i}`} className="my-3 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
+                  <span className="text-red-700 text-sm">{result.error}</span>
+                </div>
+              );
+            }
+
+            if (toolName === "get_search_report" && result.success) {
+              return (
+                <div key={`${message.id}-${i}`} className="my-3 p-4 rounded-xl bg-blue-50 border border-blue-200">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="font-bold text-blue-800 text-sm">Report #{result.id}: {result.address}</span>
+                  </div>
+                  <p className="text-xs text-blue-700">{result.county} - {result.source} - {result.created_at}</p>
+                  {result.screenshotCount > 0 && (
+                    <p className="text-xs text-blue-600 mt-1">{result.screenshotCount} browser screenshot(s) captured</p>
+                  )}
+                </div>
+              );
+            }
+          }
+        }
+        // Skip reasoning parts (already handled above) and unknown types
+        return null;
+      })}
+    </>
   );
 }
 
@@ -138,7 +305,7 @@ export function TitleChatClient() {
           /* ── Conversation ─────────────────────────────────── */
           <Conversation className="h-full">
             <ConversationContent className="gap-6 py-6">
-              {messages.map((message) => (
+              {messages.map((message, msgIndex) => (
                 <Message from={message.role} key={message.id}>
                   <div className="flex gap-3 items-start w-full">
                     {/* Avatar */}
@@ -154,137 +321,11 @@ export function TitleChatClient() {
                       </p>
 
                       <MessageContent className="!ml-0 !max-w-full">
-                        {message.parts.map((part, i) => {
-                          if (part.type === "text") {
-                            return (
-                              <MessageResponse key={i}>
-                                {part.text}
-                              </MessageResponse>
-                            );
-                          }
-                          if (part.type === "tool-invocation") {
-                            const inv = part as any;
-                            const toolName = inv.toolInvocation?.toolName || inv.toolName;
-                            const state = inv.toolInvocation?.state || inv.state;
-                            const result = inv.toolInvocation?.result || inv.result;
-
-                            /* Loading state */
-                            if (state === "call" || state === "partial-call") {
-                              return (
-                                <div key={i} className="my-3 p-4 rounded-xl bg-yellow-50 border border-yellow-200 flex items-center gap-3">
-                                  <Loader2 className="w-5 h-5 text-yellow-600 animate-spin shrink-0" />
-                                  <div>
-                                    <p className="font-semibold text-yellow-800 text-sm">
-                                      {toolName === "run_title_search" ? "Running Title Search..." : "Retrieving Report..."}
-                                    </p>
-                                    <p className="text-xs text-yellow-600">AI agents are analyzing county records</p>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            /* Result state */
-                            if (state === "result" && result) {
-                              if (toolName === "run_title_search" && result.success) {
-                                const r = result;
-                                return (
-                                  <div key={i} className="my-3 space-y-3">
-                                    {/* Header */}
-                                    <div className="p-4 rounded-xl bg-green-50 border border-green-200">
-                                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                        <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
-                                        <span className="font-bold text-green-800">Title Search Complete</span>
-                                        <Badge className="bg-green-100 text-green-700 border-green-200 text-xs sm:ml-auto">{r.dataSource}</Badge>
-                                      </div>
-                                      <div className="flex items-center gap-2 text-sm text-green-700 flex-wrap">
-                                        <MapPin className="w-3.5 h-3.5 shrink-0" />
-                                        <span className="font-semibold">{r.propertyAddress}</span>
-                                        <span className="text-green-500 hidden sm:inline">-</span>
-                                        <span>{r.county}</span>
-                                      </div>
-                                    </div>
-
-                                    {/* Quick stats */}
-                                    <div className="grid grid-cols-3 gap-2">
-                                      <div className="p-3 rounded-lg bg-white border border-slate-100 text-center shadow-sm">
-                                        <div className="text-lg font-bold text-slate-900">{r.ownershipChain?.length || 0}</div>
-                                        <div className="text-[10px] text-slate-400 uppercase">Deeds</div>
-                                      </div>
-                                      <div className="p-3 rounded-lg bg-white border border-slate-100 text-center shadow-sm">
-                                        <div className={`text-lg font-bold ${(r.liens?.length || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>{r.liens?.length || 0}</div>
-                                        <div className="text-[10px] text-slate-400 uppercase">Liens</div>
-                                      </div>
-                                      <div className="p-3 rounded-lg bg-white border border-slate-100 text-center shadow-sm">
-                                        <div className={`text-lg font-bold ${(r.exceptions?.length || 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>{r.exceptions?.length || 0}</div>
-                                        <div className="text-[10px] text-slate-400 uppercase">Exceptions</div>
-                                      </div>
-                                    </div>
-
-                                    {/* Chain preview */}
-                                    {r.ownershipChain?.length > 0 && (
-                                      <div className="p-3 rounded-lg bg-white border border-slate-100 shadow-sm">
-                                        <p className="text-xs font-bold text-slate-500 uppercase mb-2">Ownership Chain</p>
-                                        {r.ownershipChain.slice(0, 3).map((n: any, j: number) => (
-                                          <div key={j} className="flex items-center gap-2 text-xs text-slate-700 py-1.5 border-b border-slate-50 last:border-0 flex-wrap">
-                                            <span className="font-mono text-slate-400 shrink-0">{n.date}</span>
-                                            <span className="truncate">{n.grantor}</span>
-                                            <span className="text-slate-300 shrink-0">&rarr;</span>
-                                            <span className="font-semibold truncate">{n.grantee}</span>
-                                          </div>
-                                        ))}
-                                        {r.ownershipChain.length > 3 && (
-                                          <p className="text-[10px] text-slate-400 mt-1.5">+ {r.ownershipChain.length - 3} more records</p>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {/* Liens preview */}
-                                    {r.liens?.length > 0 && (
-                                      <div className="p-3 rounded-lg bg-red-50 border border-red-100">
-                                        <p className="text-xs font-bold text-red-500 uppercase mb-2">Active Liens</p>
-                                        {r.liens.map((l: any, j: number) => (
-                                          <div key={j} className="flex items-center justify-between text-xs text-red-800 py-1.5">
-                                            <span className="truncate">{l.claimant || l.type} ({l.type})</span>
-                                            <span className="font-mono font-bold shrink-0 ml-2">{l.amount}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {r.searchId && (
-                                      <p className="text-[10px] text-slate-400">Saved as search #{r.searchId} — view in History</p>
-                                    )}
-                                  </div>
-                                );
-                              }
-
-                              if (toolName === "run_title_search" && !result.success) {
-                                return (
-                                  <div key={i} className="my-3 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3">
-                                    <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
-                                    <span className="text-red-700 text-sm">{result.error}</span>
-                                  </div>
-                                );
-                              }
-
-                              if (toolName === "get_search_report" && result.success) {
-                                return (
-                                  <div key={i} className="my-3 p-4 rounded-xl bg-blue-50 border border-blue-200">
-                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                      <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                                      <span className="font-bold text-blue-800 text-sm">Report #{result.id}: {result.address}</span>
-                                    </div>
-                                    <p className="text-xs text-blue-700">{result.county} - {result.source} - {result.created_at}</p>
-                                    {result.screenshotCount > 0 && (
-                                      <p className="text-xs text-blue-600 mt-1">{result.screenshotCount} browser screenshot(s) captured</p>
-                                    )}
-                                  </div>
-                                );
-                              }
-                            }
-                          }
-                          return null;
-                        })}
+                        <MessageParts
+                          message={message}
+                          isLastMessage={msgIndex === messages.length - 1}
+                          isStreaming={isLoading}
+                        />
                       </MessageContent>
                     </div>
                   </div>

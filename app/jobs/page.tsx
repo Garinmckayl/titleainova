@@ -69,12 +69,28 @@ function StatusBadge({ status }: { status: JobStatus }) {
 
 /* ─── Job detail panel ───────────────────────────────────────── */
 function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = useState(true);
+  const userScrolledUp = useRef(false);
 
+  // Auto-scroll logs only while running AND user hasn't scrolled up
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [job.logs]);
+    if (job.status !== 'running' && job.status !== 'queued') return;
+    if (userScrolledUp.current) return;
+
+    const container = logsContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [job.logs, job.status]);
+
+  // Detect if user scrolled up in the log container
+  const handleLogScroll = () => {
+    const container = logsContainerRef.current;
+    if (!container) return;
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+    userScrolledUp.current = !isAtBottom;
+  };
 
   const currentStepIdx = STEPS.findIndex(s => s.id === job.current_step);
 
@@ -205,7 +221,11 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
               exit={{ height: 0 }}
               className="overflow-hidden"
             >
-              <div className="bg-slate-950 p-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1">
+              <div
+                ref={logsContainerRef}
+                onScroll={handleLogScroll}
+                className="bg-slate-950 p-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1"
+              >
                 {job.logs.length === 0 && (
                   <span className="text-slate-600">Waiting for agent to start...</span>
                 )}
@@ -223,7 +243,6 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                     <span className="text-yellow-400 animate-pulse">...</span>
                   </div>
                 )}
-                <div ref={logsEndRef} />
               </div>
             </motion.div>
           )}
@@ -372,6 +391,66 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
               </CardContent>
             </Card>
           )}
+
+          {/* Data Source & Confidence */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {job.result.dataSource && (
+              <Card className="border-0 shadow-lg bg-white">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-slate-100 text-slate-600 rounded-lg">
+                      <ExternalLink className="h-5 w-5" />
+                    </div>
+                    <h3 className="font-bold text-slate-900">Data Source</h3>
+                  </div>
+                  <p className="text-sm text-slate-600">{job.result.dataSource}</p>
+                  {job.result.sources?.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {job.result.sources.map((src: any, i: number) => (
+                        <div key={i} className="text-xs text-slate-400 truncate">
+                          {src.sourceName} — {src.url}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            {job.result.overallConfidence && (
+              <Card className="border-0 shadow-lg bg-white">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <h3 className="font-bold text-slate-900">Confidence</h3>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge className={cn(
+                      "text-sm px-3 py-1",
+                      job.result.overallConfidence.level === 'high' ? 'bg-green-100 text-green-700 border-green-200' :
+                      job.result.overallConfidence.level === 'medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                      'bg-red-100 text-red-700 border-red-200'
+                    )}>
+                      {job.result.overallConfidence.level?.toUpperCase()}
+                    </Badge>
+                    <span className="text-2xl font-bold text-slate-900">
+                      {job.result.overallConfidence.score != null
+                        ? `${Math.round(job.result.overallConfidence.score * 100)}%`
+                        : 'N/A'}
+                    </span>
+                  </div>
+                  {job.result.overallConfidence.factors?.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {job.result.overallConfidence.factors.map((f: string, i: number) => (
+                        <p key={i} className="text-xs text-slate-500">• {f}</p>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       )}
     </motion.div>

@@ -34,61 +34,76 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
     let sourceType: DataSourceType = 'tavily_search';
     const citations: SourceCitation[] = [];
     const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
+    const hasSidecar = sidecarUrl && !sidecarUrl.includes('your-ec2') && !sidecarUrl.includes('your_');
 
-    try {
-      const res = await fetch(`${sidecarUrl}/search-stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, county: county.name }),
-        signal: AbortSignal.timeout(240_000),
-      });
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop() ?? '';
-          for (const part of parts) {
-            const line = part.trim();
-            if (!line.startsWith('data: ')) continue;
-            try {
-              const evt = JSON.parse(line.slice(6));
-              if (evt.type === 'progress') await updateJob(jobId, { log: evt.message });
-              else if (evt.type === 'screenshot') {
-                screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
-                await updateJob(jobId, { log: `[screenshot] ${evt.label}`, screenshots: [{ label: evt.label, step: evt.step, data: evt.data }] });
-              } else if (evt.type === 'result') novaActData = evt.data;
-            } catch { /* skip */ }
+    if (hasSidecar) {
+      try {
+        const res = await fetch(`${sidecarUrl}/search-stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, county: county.name }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() ?? '';
+            for (const part of parts) {
+              const line = part.trim();
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const evt = JSON.parse(line.slice(6));
+                if (evt.type === 'progress') await updateJob(jobId, { log: evt.message });
+                else if (evt.type === 'screenshot') {
+                  screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
+                  await updateJob(jobId, { log: `[screenshot] ${evt.label}`, screenshots: [{ label: evt.label, step: evt.step, data: evt.data }] });
+                } else if (evt.type === 'result') novaActData = evt.data;
+              } catch { /* skip */ }
+            }
           }
         }
+      } catch {
+        await updateJob(jobId, { log: 'Browser agent unavailable — falling back to web search.' });
       }
-    } catch {
-      await updateJob(jobId, { log: 'Nova Act sidecar unavailable — falling back.' });
     }
 
     let docs: any[] = [];
     if (novaActData) {
       sourceType = 'nova_act';
-      await updateJob(jobId, { progress_pct: 45, log: `Nova Act extracted ${novaActData?.ownershipChain?.length || 0} deed records.` });
+      await updateJob(jobId, { progress_pct: 45, log: `Browser agent extracted ${novaActData?.ownershipChain?.length || 0} deed records.` });
       const citation = createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || '');
       citations.push(citation);
-      docs = [{ source: 'Nova Act', url: county.recorderUrl || '', text: JSON.stringify(novaActData), type: 'NovaAct', citation }];
+      docs = [{ source: 'County Recorder Browser Agent', url: county.recorderUrl || '', text: JSON.stringify(novaActData), type: 'NovaAct', citation }];
     } else {
       const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
       if (!hasTavily) {
         sourceType = 'mock_demo';
-        await updateJob(jobId, { log: 'No search API keys — using demonstration mode.' });
+        await updateJob(jobId, { log: 'Using demonstration data (no search API keys configured).' });
         docs = getMockDocs(address, county.name);
         citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
       } else {
         sourceType = 'tavily_search';
-        docs = await retrieveCountyRecords(address, county.name);
-        for (const d of docs) { if (d.citation) citations.push(d.citation); }
-        await updateJob(jobId, { progress_pct: 45, log: `Analyzed ${docs.length} records from web search.` });
+        try {
+          docs = await retrieveCountyRecords(address, county.name);
+        } catch (err: any) {
+          await updateJob(jobId, { log: `Web search failed: ${err.message}. Using demonstration data.` });
+          docs = [];
+        }
+        if (docs.length === 0) {
+          sourceType = 'mock_demo';
+          await updateJob(jobId, { log: 'No records found via web search — using demonstration data.' });
+          docs = getMockDocs(address, county.name);
+          citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
+        } else {
+          for (const d of docs) { if (d.citation) citations.push(d.citation); }
+          await updateJob(jobId, { progress_pct: 45, log: `Analyzed ${docs.length} records from web search.` });
+        }
       }
     }
 

@@ -37,6 +37,18 @@ interface SearchRow {
     exceptions?: Array<{ type: string; description: string; explanation?: string }>;
     liens?: Array<{ type: string; amount: string; status: string; claimant?: string; dateRecorded?: string; priority?: string }>;
     ownershipChain?: Array<{ grantor: string; grantee: string; date: string; documentType?: string; documentNumber?: string }>;
+    altaScheduleA?: {
+      effectiveDate: string;
+      policyAmount?: string;
+      estateType: string;
+      vestedOwner: string;
+      legalDescription: string;
+      commitmentNumber: string;
+    };
+    altaScheduleB?: {
+      requirements: Array<{ number: string; description: string; satisfied: boolean }>;
+      exceptions: Array<{ number: string; category: string; description: string; removable: boolean }>;
+    };
   };
 }
 
@@ -58,7 +70,7 @@ function SourceBadge({ source }: { source: string | null }) {
         'w-1.5 h-1.5 rounded-full',
         isLive ? 'bg-green-500' : isSimulation ? 'bg-yellow-500' : 'bg-slate-400'
       )} />
-      {isLive ? 'Nova Act Live' : isSimulation ? 'Demo' : (source || 'Web Search')}
+      {isLive ? 'Live Browser' : isSimulation ? 'Demo' : (source || 'Web Search')}
     </Badge>
   );
 }
@@ -95,13 +107,13 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
         </Button>
       </div>
 
-      {/* Nova Act Browser Screenshots */}
+      {/* Browser Screenshots */}
       {row.screenshots && row.screenshots.length > 0 && (
         <Card className="border-0 shadow-lg bg-white overflow-hidden">
           <div className="bg-slate-900 px-4 py-3 flex items-center gap-2">
             <Camera className="h-4 w-4 text-green-400" />
             <span className="text-slate-300 text-sm font-semibold">
-              Nova Act Browser Screenshots ({row.screenshots.length})
+              Browser Screenshots ({row.screenshots.length})
             </span>
           </div>
           <CardContent className="p-4">
@@ -238,6 +250,118 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
           </CardContent>
         </Card>
       )}
+
+      {/* ALTA Schedule A — Title Commitment */}
+      {row.report?.altaScheduleA && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                <FileText className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900">ALTA Schedule A — Title Commitment</h3>
+              {row.report.altaScheduleA.commitmentNumber && (
+                <Badge variant="outline" className="ml-auto font-mono text-xs">{row.report.altaScheduleA.commitmentNumber}</Badge>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Effective Date</span>
+                <p className="font-bold text-slate-900 mt-1">{row.report.altaScheduleA.effectiveDate || 'N/A'}</p>
+              </div>
+              <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Estate Type</span>
+                <p className="font-bold text-slate-900 mt-1">{row.report.altaScheduleA.estateType || 'Fee Simple'}</p>
+              </div>
+              <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Vested Owner</span>
+                <p className="font-bold text-slate-900 mt-1">{row.report.altaScheduleA.vestedOwner || 'N/A'}</p>
+              </div>
+              {row.report.altaScheduleA.policyAmount && (
+                <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                  <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Policy Amount</span>
+                  <p className="font-bold text-slate-900 mt-1">{row.report.altaScheduleA.policyAmount}</p>
+                </div>
+              )}
+            </div>
+            {row.report.altaScheduleA.legalDescription && (
+              <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Legal Description</span>
+                <p className="text-sm text-slate-700 mt-1 font-mono leading-relaxed">{row.report.altaScheduleA.legalDescription}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ALTA Schedule B — Requirements & Exceptions */}
+      {row.report?.altaScheduleB && (
+        <Card className="border-0 shadow-lg bg-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900">ALTA Schedule B — Requirements & Exceptions</h3>
+            </div>
+
+            {row.report.altaScheduleB.requirements?.length > 0 && (
+              <div className="mb-6">
+                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part I — Requirements</h4>
+                <div className="space-y-2">
+                  {row.report.altaScheduleB.requirements.map((req, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                      <div className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5",
+                        req.satisfied ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                      )}>
+                        {req.satisfied ? <CheckCircle2 className="w-3.5 h-3.5" /> : req.number}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-slate-800">{req.description}</p>
+                        <span className={cn(
+                          "text-xs font-semibold mt-1 inline-block",
+                          req.satisfied ? "text-green-600" : "text-yellow-600"
+                        )}>
+                          {req.satisfied ? 'Satisfied' : 'Outstanding'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {row.report.altaScheduleB.exceptions?.length > 0 && (
+              <div>
+                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part II — Exceptions from Coverage</h4>
+                <div className="space-y-2">
+                  {row.report.altaScheduleB.exceptions.map((ex, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100"
+                      style={{ backgroundColor: ex.category === 'standard' ? '#f8fafc' : '#fffbeb' }}>
+                      <Badge variant="outline" className={cn(
+                        "shrink-0 text-[10px] uppercase",
+                        ex.category === 'standard' ? "border-slate-300 text-slate-500" : "border-amber-300 text-amber-700"
+                      )}>
+                        {ex.number}
+                      </Badge>
+                      <div className="flex-1">
+                        <p className="text-sm text-slate-800">{ex.description}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-[10px]">{ex.category}</Badge>
+                          {ex.removable && (
+                            <span className="text-xs text-green-600 font-semibold">Removable</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </motion.div>
   );
 }
@@ -274,7 +398,7 @@ export default function SearchesPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Search History</h1>
-              <p className="text-slate-500 mt-1">Your recent title searches powered by Amazon Nova Act</p>
+               <p className="text-slate-500 mt-1">Your recent title searches and results</p>
             </div>
           </div>
           <Link href="/titleai">
@@ -458,10 +582,6 @@ export default function SearchesPage() {
       {!loading && !selected && searches.length > 0 && (
         <div className="mt-8 text-center text-slate-400 text-sm">
           Showing {searches.length} most recent search{searches.length !== 1 ? 'es' : ''}
-          {' - '}Powered by{' '}
-          <span className="text-slate-600 font-semibold">Amazon Nova Act</span>
-          {' + '}
-          <span className="text-slate-600 font-semibold">Nova Pro</span>
         </div>
       )}
       </div>

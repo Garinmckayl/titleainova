@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Nova Act Browser Automation — HTTP proxy to Python sidecar
+ * Browser Agent Automation — HTTP proxy to Python sidecar
  *
  * The Python sidecar (nova-act-service/main.py) runs alongside Next.js on a
  * machine that has internet access. It uses the Nova Act SDK with IAM credentials
@@ -88,7 +88,7 @@ export async function GET() {
     return NextResponse.json({
       status: 'unreachable',
       sidecar_url: sidecarUrl,
-      message: 'Could not reach Nova Act sidecar. Is main.py running?',
+      message: 'Could not reach browser agent sidecar. Is main.py running?',
     });
   }
 }

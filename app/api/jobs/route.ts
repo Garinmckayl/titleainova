@@ -34,7 +34,7 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
     let sourceType: DataSourceType = 'tavily_search';
     const citations: SourceCitation[] = [];
     const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
-    const hasSidecar = sidecarUrl && !sidecarUrl.includes('your-ec2') && !sidecarUrl.includes('your_');
+    const hasSidecar = sidecarUrl && !sidecarUrl.includes('your-ec2') && !sidecarUrl.includes('your_') && !sidecarUrl.includes('your-ec2-ip');
 
     if (hasSidecar) {
       try {
@@ -42,7 +42,7 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ address, county: county.name }),
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(300_000),
         });
         if (res.ok && res.body) {
           const reader = res.body.getReader();
@@ -141,8 +141,8 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
       altaScheduleB: analysis.altaScheduleB,
       reviewStatus: 'pending_review' as const,
       dataSource: novaActData
-        ? `Amazon Nova Act (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level}`
-        : `Web Search + Amazon Nova Pro | Confidence: ${overallConfidence.level}`,
+        ? `Browser Agent (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level}`
+        : `Web Search + AI Analysis | Confidence: ${overallConfidence.level}`,
     };
     const pdfBuffer = await generateTitleReportPDF(reportData);
     const pdfBase64 = pdfBuffer.toString('base64');

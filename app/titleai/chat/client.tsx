@@ -295,7 +295,7 @@ export function TitleChatClient() {
             </div>
 
             <div className="flex gap-2 flex-wrap justify-center">
-              <Badge className="bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs">Nova Act Browser</Badge>
+              <Badge className="bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs">Browser Agent</Badge>
               <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-xs">Chain of Title</Badge>
               <Badge className="bg-red-50 text-red-700 border border-red-200 text-xs">Lien Detection</Badge>
               <Badge className="bg-purple-50 text-purple-700 border border-purple-200 text-xs">Risk Analysis</Badge>

@@ -104,7 +104,7 @@ async function executeSearch({ address }: { address: string }): Promise<Record<s
       liens,
       exceptions,
       summary,
-      dataSource: novaActData ? "Amazon Nova Act" : "Web Search + Amazon Nova Pro",
+      dataSource: novaActData ? "Browser Agent" : "Web Search + AI Analysis",
     };
 
     const searchId = await saveSearch(address, county.name, novaActData?.parcelId ?? null, novaActData?.source ?? "web_search", reportData, screenshots);

@@ -21,8 +21,8 @@ export const titleSearchJob = inngest.createFunction(
     id: 'title-search-run',
     retries: 1,
     timeouts: {
-      // Kill the entire function if it runs longer than 5 minutes
-      finish: '5m',
+      // Kill the entire function if it runs longer than 10 minutes
+      finish: '10m',
     },
   },
   { event: 'titleai/search.requested' },
@@ -66,7 +66,7 @@ export const titleSearchJob = inngest.createFunction(
       const citations: SourceCitation[] = [];
 
       // Only try sidecar if URL is configured and not a placeholder
-      const hasSidecar = sidecarUrl && !sidecarUrl.includes('your-ec2') && !sidecarUrl.includes('your_');
+      const hasSidecar = sidecarUrl && !sidecarUrl.includes('your-ec2') && !sidecarUrl.includes('your_') && !sidecarUrl.includes('your-ec2-ip');
 
       if (hasSidecar) {
         try {
@@ -74,7 +74,7 @@ export const titleSearchJob = inngest.createFunction(
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address, county: county.name }),
-            signal: AbortSignal.timeout(120_000), // 2 min max, not 4
+            signal: AbortSignal.timeout(300_000), // 5 min max for browser agent
           });
 
           if (res.ok && res.body) {
@@ -233,8 +233,8 @@ export const titleSearchJob = inngest.createFunction(
         altaScheduleB: analysis.altaScheduleB,
         reviewStatus: 'pending_review' as const,
         dataSource: retrieval.novaActData
-          ? `Amazon Nova Act (${retrieval.novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level}`
-          : `Web Search + Amazon Nova Pro | Confidence: ${overallConfidence.level}`,
+          ? `Browser Agent (${retrieval.novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level}`
+          : `Web Search + AI Analysis | Confidence: ${overallConfidence.level}`,
       };
 
       const pdfBuffer = await generateTitleReportPDF(reportData);

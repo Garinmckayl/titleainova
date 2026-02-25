@@ -14,7 +14,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
- * Stream Nova Act browser progress + final data from the Python sidecar via SSE.
+ * Stream browser agent progress + final data from the Python sidecar via SSE.
  * Captures screenshots into the provided array so they can be persisted to DB.
  */
 async function streamNovaActSearch(
@@ -25,7 +25,7 @@ async function streamNovaActSearch(
 ): Promise<any | null> {
   const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
   if (!sidecarUrl) {
-    send({ type: 'log', step: 'retrieval', message: 'Nova Act service not configured — using web search fallback.' });
+    send({ type: 'log', step: 'retrieval', message: 'Browser agent service not configured — using web search fallback.' });
     return null;
   }
 
@@ -38,7 +38,7 @@ async function streamNovaActSearch(
       signal: AbortSignal.timeout(270_000),
     });
   } catch (err: any) {
-    send({ type: 'log', step: 'retrieval', message: `Nova Act sidecar unavailable (${err.message}) — using fallback mode.` });
+    send({ type: 'log', step: 'retrieval', message: `Browser agent sidecar unavailable (${err.message}) — using fallback mode.` });
     return null;
   }
 
@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
           send({ type: 'log', step: 'lookup', message: `Property located in ${county.name}, ${county.state}.` });
         }
 
-        // Step 2: Nova Act SSE streaming (real-time browser logs to UI)
-        send({ type: 'progress', step: 'retrieval', message: `Nova Act launching Chromium for ${county.name} recorder...` });
+        // Step 2: Browser agent SSE streaming (real-time browser logs to UI)
+        send({ type: 'progress', step: 'retrieval', message: `Launching browser agent for ${county.name} recorder...` });
 
         const novaActData = await streamNovaActSearch(address, county.name, send, collectedScreenshots);
         let docs: any[] = [];
@@ -118,15 +118,15 @@ export async function POST(req: NextRequest) {
 
         if (novaActData) {
           sourceType = 'nova_act';
-          send({ type: 'progress', step: 'chain', message: `Nova Act extracted ${novaActData.ownershipChain?.length || 0} deed records from county recorder.` });
+          send({ type: 'progress', step: 'chain', message: `Browser agent extracted ${novaActData.ownershipChain?.length || 0} deed records from county recorder.` });
 
-          const citation = createCitation('nova_act', `${county.name} Official Records — Nova Act Browser Agent`, county.recorderUrl || '', {
+          const citation = createCitation('nova_act', `${county.name} Official Records — Browser Agent`, county.recorderUrl || '', {
             documentType: 'County Recorder Official Records',
           });
           citations.push(citation);
 
           docs = [{
-            source: 'Amazon Nova Act — County Recorder Browser Agent',
+            source: 'County Recorder Browser Agent',
             url: county.recorderUrl || '',
             text: JSON.stringify(novaActData),
             type: 'NovaAct',
@@ -159,12 +159,12 @@ export async function POST(req: NextRequest) {
             }
             send({ type: 'log', step: 'retrieval', message: `Analyzed ${docs.length} property records from web search.` });
           }
-          send({ type: 'progress', step: 'chain', message: 'Building chain of title with Amazon Nova Pro...' });
+          send({ type: 'progress', step: 'chain', message: 'Building chain of title with AI analysis...' });
         }
 
         // Step 3: Enhanced analysis pipeline with provenance + ALTA
         send({ type: 'progress', step: 'liens', message: 'Scanning for active liens and encumbrances...' });
-        send({ type: 'progress', step: 'risk', message: 'Assessing title risks with Amazon Nova Pro...' });
+        send({ type: 'progress', step: 'risk', message: 'Assessing title risks with AI analysis...' });
 
         const analysis = await runAnalysisPipeline(docs, address, county.name, sourceType, {
           parcelId: novaActData?.parcelId,
@@ -196,8 +196,8 @@ export async function POST(req: NextRequest) {
           altaScheduleB: analysis.altaScheduleB,
           reviewStatus: 'pending_review' as const,
           dataSource: novaActData
-            ? `Amazon Nova Act — County Recorder Browser Agent (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`
-            : `Web Search + Amazon Nova Pro | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`,
+            ? `Browser Agent — County Recorder (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`
+            : `Web Search + AI Analysis | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`,
         };
 
         const pdfBuffer = await generateTitleReportPDF(reportData);

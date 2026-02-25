@@ -118,7 +118,7 @@ export function TitleSearchClient() {
             setProgressMessage(evt.message);
             addLog(evt.step, evt.message);
           } else if (evt.type === 'log') {
-            // Detailed log lines from Nova Act sidecar
+            // Detailed log lines from browser agent sidecar
             addLog(evt.step, evt.message);
           } else if (evt.type === 'live_view') {
             setLiveViewUrl(evt.url);
@@ -397,13 +397,13 @@ export function TitleSearchClient() {
                     exit={{ height: 0 }}
                     className="overflow-hidden"
                   >
-                     {/* Live browser screenshot — only shown when real screenshots arrive from Nova Act */}
+                     {/* Live browser screenshot — only shown when real screenshots arrive from browser agent */}
                       {activeScreenshot && (
                       <div className="bg-slate-900 border-b border-slate-800 p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                           <span className="text-slate-400 text-xs font-mono">
-                            Nova Act Browser — {activeScreenshot.label}
+                            Browser Agent — {activeScreenshot.label}
                           </span>
                           {screenshots.length > 1 && (
                             <div className="ml-auto flex gap-1">
@@ -701,7 +701,7 @@ export function TitleSearchClient() {
             <details className="group">
               <summary className="cursor-pointer flex items-center gap-2 text-sm text-slate-400 hover:text-slate-600 transition-colors list-none select-none">
                 <span className="w-2 h-2 rounded-full bg-green-400" />
-                View Nova Act browser screenshots ({screenshots.length})
+                View browser screenshots ({screenshots.length})
                 <ChevronDown className="h-3.5 w-3.5 group-open:rotate-180 transition-transform" />
               </summary>
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

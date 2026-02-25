@@ -4,8 +4,8 @@ import { TitleSearchClient } from "./client";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Title AI Nova — Automated Property Title Search",
-  description: "Instant title reports, lien searches, and ownership chain analysis powered by Amazon Nova Act + Nova Pro.",
+  title: "Title AI — Automated Property Title Search",
+  description: "Instant title reports, lien searches, and ownership chain analysis powered by AI.",
 };
 
 export default function TitleSearchPage() {

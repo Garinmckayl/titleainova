@@ -4,7 +4,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 /**
- * SSE proxy: forwards the /search-stream SSE from the Python Nova Act sidecar
+ * SSE proxy: forwards the /search-stream SSE from the Python browser agent sidecar
  * directly to the browser so the UI can render live progress logs.
  *
  * POST /api/nova-act/stream  { address, county }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       start(controller) {
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ type: 'error', message: `Nova Act sidecar unreachable: ${err.message}` })}\n\n`,
+            `data: ${JSON.stringify({ type: 'error', message: `Browser agent sidecar unreachable: ${err.message}` })}\n\n`,
           ),
         );
         controller.close();

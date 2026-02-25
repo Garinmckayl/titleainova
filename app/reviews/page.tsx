@@ -1292,7 +1292,7 @@ export default function ReviewsPage() {
               Human-in-the-Loop
             </span>
             {" + "}
-            <span className="text-slate-600 font-semibold">Amazon Nova</span>
+            <span className="text-slate-600 font-semibold">AI</span>
           </div>
         )}
       </div>

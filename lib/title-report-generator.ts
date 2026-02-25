@@ -91,7 +91,7 @@ export async function generateTitleReportPDF(data: TitleReportData): Promise<Buf
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(180, 200, 215);
-  doc.text('Title AI Nova  ·  Powered by Amazon Nova Pro  ·  ALTA Compliant Format', ML + 28, 26);
+  doc.text('Title AI  ·  AI-Powered  ·  ALTA Compliant Format', ML + 28, 26);
   doc.text(`Report Date: ${data.reportDate}`, ML + 28, 33);
   if (data.altaScheduleA?.commitmentNumber) {
     doc.text(`Commitment No: ${data.altaScheduleA.commitmentNumber}`, ML + 28, 39);
@@ -163,7 +163,7 @@ export async function generateTitleReportPDF(data: TitleReportData): Promise<Buf
 
   y += 2;
   doc.setFontSize(7);
-  doc.text(`Data Source: ${data.dataSource || 'Amazon Nova Pro Analysis'}`, ML, y);
+  doc.text(`Data Source: ${data.dataSource || 'AI Analysis'}`, ML, y);
   y += 7;
 
   // ── ALTA Schedule A ───────────────────────────────────────────────────────

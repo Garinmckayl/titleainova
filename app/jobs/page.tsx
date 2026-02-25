@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Search, Building2, MapPin, Loader2, ArrowRight, CheckCircle2,
   AlertTriangle, Clock, Terminal, ChevronDown, Download, FileText,
-  ShieldCheck, Workflow, RefreshCw, Play, ExternalLink
+  ShieldCheck, Workflow, RefreshCw, Play, ExternalLink, Camera
 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,6 +29,7 @@ interface Job {
   progress_pct: number;
   logs: string[];
   result: any | null;
+  screenshots: Array<{ label: string; step: string; data: string }>;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -257,6 +258,37 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
         </div>
       )}
 
+      {/* Browser Screenshots */}
+      {job.screenshots && job.screenshots.length > 0 && (
+        <div className="rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
+          <div className="bg-slate-900 px-4 py-3 flex items-center gap-2">
+            <Camera className="h-4 w-4 text-green-400" />
+            <span className="text-slate-300 text-sm font-semibold">
+              Browser Screenshots ({job.screenshots.length})
+            </span>
+          </div>
+          <div className="bg-slate-950 p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {job.screenshots.map((shot, i) => (
+                <div key={i} className="rounded-xl overflow-hidden border border-slate-700 shadow-sm">
+                  <div className="bg-slate-800 px-3 py-2 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    <span className="text-slate-300 text-xs font-mono truncate">{shot.label}</span>
+                    <Badge variant="outline" className="ml-auto text-[10px] text-slate-500 border-slate-600">{shot.step}</Badge>
+                  </div>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:image/jpeg;base64,${shot.data}`}
+                    alt={shot.label}
+                    className="w-full object-cover object-top"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Result */}
       {job.status === 'completed' && job.result && (
         <div className="space-y-6">
@@ -388,6 +420,120 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ALTA Schedule A — Title Commitment */}
+          {job.result.altaScheduleA && (
+            <Card className="border-0 shadow-lg bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-900">ALTA Schedule A — Title Commitment</h3>
+                  {job.result.altaScheduleA.commitmentNumber && (
+                    <Badge variant="outline" className="ml-auto font-mono text-xs">{job.result.altaScheduleA.commitmentNumber}</Badge>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                    <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Effective Date</span>
+                    <p className="font-bold text-slate-900 mt-1">{job.result.altaScheduleA.effectiveDate || 'N/A'}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                    <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Estate Type</span>
+                    <p className="font-bold text-slate-900 mt-1">{job.result.altaScheduleA.estateType || 'Fee Simple'}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                    <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Vested Owner</span>
+                    <p className="font-bold text-slate-900 mt-1">{job.result.altaScheduleA.vestedOwner || 'N/A'}</p>
+                  </div>
+                  {job.result.altaScheduleA.policyAmount && (
+                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                      <span className="text-xs text-indigo-500 font-semibold uppercase tracking-wider">Policy Amount</span>
+                      <p className="font-bold text-slate-900 mt-1">{job.result.altaScheduleA.policyAmount}</p>
+                    </div>
+                  )}
+                </div>
+                {job.result.altaScheduleA.legalDescription && (
+                  <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Legal Description</span>
+                    <p className="text-sm text-slate-700 mt-1 font-mono leading-relaxed">{job.result.altaScheduleA.legalDescription}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ALTA Schedule B — Requirements & Exceptions */}
+          {job.result.altaScheduleB && (
+            <Card className="border-0 shadow-lg bg-white">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-bold text-lg text-slate-900">ALTA Schedule B — Requirements & Exceptions</h3>
+                </div>
+
+                {/* Requirements */}
+                {job.result.altaScheduleB.requirements?.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part I — Requirements</h4>
+                    <div className="space-y-2">
+                      {job.result.altaScheduleB.requirements.map((req: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
+                          <div className={cn(
+                            "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5",
+                            req.satisfied ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                          )}>
+                            {req.satisfied ? <CheckCircle2 className="w-3.5 h-3.5" /> : req.number}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-800">{req.description}</p>
+                            <span className={cn(
+                              "text-xs font-semibold mt-1 inline-block",
+                              req.satisfied ? "text-green-600" : "text-yellow-600"
+                            )}>
+                              {req.satisfied ? 'Satisfied' : 'Outstanding'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Schedule B Exceptions */}
+                {job.result.altaScheduleB.exceptions?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part II — Exceptions from Coverage</h4>
+                    <div className="space-y-2">
+                      {job.result.altaScheduleB.exceptions.map((ex: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100"
+                          style={{ backgroundColor: ex.category === 'standard' ? '#f8fafc' : '#fffbeb' }}>
+                          <Badge variant="outline" className={cn(
+                            "shrink-0 text-[10px] uppercase",
+                            ex.category === 'standard' ? "border-slate-300 text-slate-500" : "border-amber-300 text-amber-700"
+                          )}>
+                            {ex.number}
+                          </Badge>
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-800">{ex.description}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" className="text-[10px]">{ex.category}</Badge>
+                              {ex.removable && (
+                                <span className="text-xs text-green-600 font-semibold">Removable</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

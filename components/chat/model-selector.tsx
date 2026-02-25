@@ -13,21 +13,21 @@ interface ModelSelectorProps {
 const models = [
   { 
     id: "pro" as NovaModel, 
-    name: "Nova Pro", 
+    name: "Pro", 
     description: "Advanced reasoning & analysis",
     badge: "Best",
     color: "bg-purple-100 text-purple-700 border-purple-200"
   },
   { 
     id: "lite" as NovaModel, 
-    name: "Nova Lite", 
+    name: "Lite", 
     description: "Fast & efficient",
     badge: "Fast",
     color: "bg-blue-100 text-blue-700 border-blue-200"
   },
   { 
     id: "sonic" as NovaModel, 
-    name: "Nova Sonic", 
+    name: "Sonic", 
     description: "Voice & multimodal",
     badge: "Voice",
     color: "bg-green-100 text-green-700 border-green-200"

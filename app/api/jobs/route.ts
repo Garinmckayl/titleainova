@@ -60,6 +60,8 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
               try {
                 const evt = JSON.parse(line.slice(6));
                 if (evt.type === 'progress') await updateJob(jobId, { log: evt.message });
+                else if (evt.type === 'error') await updateJob(jobId, { log: `[ERROR] ${evt.message}` });
+                else if (evt.type === 'debug') await updateJob(jobId, { log: `[DEBUG] Step timings: ${JSON.stringify(evt.step_timings?.map((s: any) => `${s.name}: ${s.elapsed_s}s ${s.success ? '✓' : '✗'}`))}`});
                 else if (evt.type === 'screenshot') {
                   screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
                   await updateJob(jobId, { log: `[screenshot] ${evt.label}`, screenshots: [{ label: evt.label, step: evt.step, data: evt.data }] });

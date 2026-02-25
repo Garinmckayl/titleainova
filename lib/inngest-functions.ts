@@ -96,6 +96,11 @@ export const titleSearchJob = inngest.createFunction(
                   const evt = JSON.parse(line.slice(6));
                   if (evt.type === 'progress') {
                     await updateJob(jobId, { log: evt.message });
+                  } else if (evt.type === 'error') {
+                    await updateJob(jobId, { log: `[ERROR] ${evt.message}` });
+                  } else if (evt.type === 'debug' && evt.step_timings) {
+                    const summary = evt.step_timings.map((s: any) => `${s.name}: ${s.elapsed_s}s ${s.success ? '✓' : '✗'}`).join(', ');
+                    await updateJob(jobId, { log: `[DEBUG] ${summary}` });
                   } else if (evt.type === 'screenshot') {
                     screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
                     await updateJob(jobId, {

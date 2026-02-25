@@ -19,11 +19,17 @@ import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/t
 export const titleSearchJob = inngest.createFunction(
   {
     id: 'title-search-run',
-    retries: 2,
+    retries: 1,
+    timeouts: {
+      // Kill the entire function if it runs longer than 5 minutes
+      finish: '5m',
+    },
   },
   { event: 'titleai/search.requested' },
   async ({ event, step }) => {
     const { jobId, address, userId } = event.data as { jobId: string; address: string; userId?: string };
+
+    try {
 
     // ── Step 1: County Lookup ──────────────────────────────────────
     const county = await step.run('county-lookup', async () => {
@@ -59,60 +65,64 @@ export const titleSearchJob = inngest.createFunction(
       let sourceType: DataSourceType = 'tavily_search';
       const citations: SourceCitation[] = [];
 
-      // Try streaming endpoint to get screenshots
-      try {
-        const res = await fetch(`${sidecarUrl}/search-stream`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, county: county.name }),
-          signal: AbortSignal.timeout(240_000),
-        });
+      // Only try sidecar if URL is configured and not a placeholder
+      const hasSidecar = sidecarUrl && !sidecarUrl.includes('your-ec2') && !sidecarUrl.includes('your_');
 
-        if (res.ok && res.body) {
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
+      if (hasSidecar) {
+        try {
+          const res = await fetch(`${sidecarUrl}/search-stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, county: county.name }),
+            signal: AbortSignal.timeout(120_000), // 2 min max, not 4
+          });
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop() ?? '';
+          if (res.ok && res.body) {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            for (const part of parts) {
-              const line = part.trim();
-              if (!line.startsWith('data: ')) continue;
-              try {
-                const evt = JSON.parse(line.slice(6));
-                if (evt.type === 'progress') {
-                  await updateJob(jobId, { log: evt.message });
-                } else if (evt.type === 'screenshot') {
-                  screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
-                  await updateJob(jobId, {
-                    log: `[screenshot] ${evt.label}`,
-                    screenshots: [{ label: evt.label, step: evt.step, data: evt.data }],
-                  });
-                } else if (evt.type === 'result') {
-                  novaActData = evt.data;
-                }
-              } catch { /* skip */ }
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const parts = buffer.split('\n\n');
+              buffer = parts.pop() ?? '';
+
+              for (const part of parts) {
+                const line = part.trim();
+                if (!line.startsWith('data: ')) continue;
+                try {
+                  const evt = JSON.parse(line.slice(6));
+                  if (evt.type === 'progress') {
+                    await updateJob(jobId, { log: evt.message });
+                  } else if (evt.type === 'screenshot') {
+                    screenshots.push({ label: evt.label, step: evt.step, data: evt.data });
+                    await updateJob(jobId, {
+                      log: `[screenshot] ${evt.label}`,
+                      screenshots: [{ label: evt.label, step: evt.step, data: evt.data }],
+                    });
+                  } else if (evt.type === 'result') {
+                    novaActData = evt.data;
+                  }
+                } catch { /* skip malformed SSE */ }
+              }
+            }
+
+            if (novaActData) {
+              sourceType = 'nova_act';
+              citations.push(createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || ''));
+              await updateJob(jobId, {
+                progress_pct: 45,
+                log: `Browser agent extracted ${novaActData?.ownershipChain?.length || 0} deed records.`,
+              });
             }
           }
-
-          if (novaActData) {
-            sourceType = 'nova_act';
-            citations.push(createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || ''));
-            await updateJob(jobId, {
-              progress_pct: 45,
-              log: `Nova Act extracted ${novaActData?.ownershipChain?.length || 0} deed records.`,
-            });
-          }
+        } catch {
+          await updateJob(jobId, {
+            log: 'Browser agent unavailable — falling back to web search.',
+          });
         }
-      } catch {
-        await updateJob(jobId, {
-          log: 'Nova Act sidecar unavailable — falling back to web search.',
-        });
       }
 
       if (novaActData) {
@@ -122,7 +132,7 @@ export const titleSearchJob = inngest.createFunction(
           sourceType,
           citations,
           docs: [{
-            source: 'Amazon Nova Act — County Recorder Browser Agent',
+            source: 'County Recorder Browser Agent',
             url: county.recorderUrl || '',
             text: JSON.stringify(novaActData),
             type: 'NovaAct',
@@ -130,26 +140,37 @@ export const titleSearchJob = inngest.createFunction(
         };
       }
 
-      // Fallback: web search or mock
+      // Fallback: web search or mock data
       const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
       let docs: any[];
 
       if (!hasTavily) {
         sourceType = 'mock_demo';
-        await updateJob(jobId, { log: 'No search API keys — using demonstration mode.' });
+        await updateJob(jobId, { log: 'Using demonstration data (no search API keys configured).' });
         docs = getMockDocs(address, county.name);
         citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
       } else {
         sourceType = 'tavily_search';
-        docs = await retrieveCountyRecords(address, county.name);
-        for (const d of docs) { if (d.citation) citations.push(d.citation); }
-        if (docs.length === 0) {
-          throw new Error('No digital records found. Manual courthouse search may be required.');
+        try {
+          docs = await retrieveCountyRecords(address, county.name);
+        } catch (err: any) {
+          await updateJob(jobId, { log: `Web search failed: ${err.message}. Using demonstration data.` });
+          docs = getMockDocs(address, county.name);
+          sourceType = 'mock_demo';
+          citations.push(createCitation('mock_demo', 'Demonstration Data (web search fallback)', 'http://mock-registry.gov/'));
         }
-        await updateJob(jobId, {
-          progress_pct: 45,
-          log: `Analyzed ${docs.length} property records from web search.`,
-        });
+        if (docs.length === 0) {
+          await updateJob(jobId, { log: 'No records found via web search. Using demonstration data.' });
+          docs = getMockDocs(address, county.name);
+          sourceType = 'mock_demo';
+          citations.push(createCitation('mock_demo', 'Demonstration Data (no results)', 'http://mock-registry.gov/'));
+        } else {
+          for (const d of docs) { if (d.citation) citations.push(d.citation); }
+          await updateJob(jobId, {
+            progress_pct: 45,
+            log: `Analyzed ${docs.length} property records from web search.`,
+          });
+        }
       }
 
       return { novaActData: null, screenshots, sourceType, citations, docs };
@@ -248,5 +269,16 @@ export const titleSearchJob = inngest.createFunction(
     });
 
     return { jobId, status: 'completed' };
+    } catch (err: any) {
+      // If anything fails, mark the job as failed so it doesn't stay stuck
+      await updateJob(jobId, {
+        status: 'failed',
+        current_step: 'error',
+        progress_pct: 0,
+        log: `Job failed: ${err.message || 'Unknown error'}`,
+      }).catch(() => {});
+      await notifyJobFailed(userId ?? null, jobId, address, err.message).catch(() => {});
+      throw err; // Re-throw so Inngest records the failure
+    }
   },
 );

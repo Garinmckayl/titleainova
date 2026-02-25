@@ -176,11 +176,14 @@ export async function POST(req: NextRequest) {
         });
       } catch (err: any) {
         console.error('[Inngest send failed, running directly]', err.message);
-        runDirectSearch(jobId, address.trim(), userId);
+        // Use waitUntil pattern to keep serverless function alive
+        const { after } = await import('next/server');
+        after(runDirectSearch(jobId, address.trim(), userId));
       }
     } else {
-      // No Inngest configured — run the search directly (non-blocking)
-      runDirectSearch(jobId, address.trim(), userId);
+      // No Inngest configured — run via after() to keep alive after response
+      const { after } = await import('next/server');
+      after(runDirectSearch(jobId, address.trim(), userId));
     }
 
     return NextResponse.json({ success: true, jobId });

@@ -41,15 +41,15 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Tech Stack */}
+          {/* Capabilities */}
           <div>
-            <h4 className="text-white font-semibold text-sm mb-3 uppercase tracking-wider">Powered By</h4>
+            <h4 className="text-white font-semibold text-sm mb-3 uppercase tracking-wider">Capabilities</h4>
             <div className="space-y-2 text-sm">
-              <span className="block">Amazon Nova Act</span>
-              <span className="block">Amazon Nova Pro</span>
-              <span className="block">AWS Bedrock</span>
-              <span className="block">Inngest Durable Execution</span>
-              <span className="block">Turso (libSQL)</span>
+              <span className="block">ALTA-Compliant Reports</span>
+              <span className="block">Source Provenance</span>
+              <span className="block">Confidence Scoring</span>
+              <span className="block">Durable Execution</span>
+              <span className="block">County Health Monitoring</span>
             </div>
           </div>
         </div>

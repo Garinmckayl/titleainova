@@ -2,9 +2,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Search, FileText, ShieldCheck, AlertTriangle, Building2, Zap, Bot,
+  Search, FileText, ShieldCheck, AlertTriangle, Building2, Zap,
   ArrowRight, CheckCircle2, Globe, TrendingUp, Clock, DollarSign,
-  Users, BarChart3, Lock, Layers, Cpu, Workflow
+  Users, BarChart3, Lock, Layers, Workflow, Bot, MessageSquare
 } from "lucide-react";
 import { Navbar } from "@/components/navbar-simple";
 import { Footer } from "@/components/footer-simple";
@@ -22,7 +22,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
             </span>
-            Disrupting a $38 Billion Industry with Amazon Nova
+            Disrupting a $38 Billion Industry
           </div>
 
           <h1 className="text-6xl md:text-8xl font-bold text-slate-900 leading-[1.05] tracking-tight mb-6">
@@ -53,14 +53,14 @@ export default function Home() {
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </Link>
-            <Link href="/jobs">
+            <Link href="/titleai/chat">
               <Button
                 size="lg"
                 variant="outline"
                 className="font-bold text-lg h-14 px-8 rounded-xl border-2 border-slate-300 text-slate-700 hover:border-yellow-400 hover:text-slate-900"
               >
-                <Workflow className="w-5 h-5 mr-2" />
-                Durable Agent Jobs
+                <MessageSquare className="w-5 h-5 mr-2" />
+                Chat with AI
               </Button>
             </Link>
           </div>
@@ -143,10 +143,10 @@ export default function Home() {
           <div className="grid md:grid-cols-5 gap-4">
             {[
               { icon: Search, label: "Property Lookup", desc: "Identify county & recorder office from any address", color: "bg-blue-50 text-blue-600" },
-              { icon: Bot, label: "Nova Act Browser", desc: "Autonomously navigate county recorder websites", color: "bg-purple-50 text-purple-600" },
-              { icon: FileText, label: "Chain of Title", desc: "Analyze full ownership history with Nova Pro", color: "bg-yellow-50 text-yellow-600" },
+              { icon: Bot, label: "Browser Agent", desc: "Autonomously navigate county recorder websites", color: "bg-purple-50 text-purple-600" },
+              { icon: FileText, label: "Chain of Title", desc: "Analyze full ownership history from deed records", color: "bg-yellow-50 text-yellow-600" },
               { icon: AlertTriangle, label: "Lien Detection", desc: "Surface tax, HOA & mortgage encumbrances", color: "bg-orange-50 text-orange-600" },
-              { icon: ShieldCheck, label: "Risk Report", desc: "Generate PDF title commitment in seconds", color: "bg-green-50 text-green-600" },
+              { icon: ShieldCheck, label: "Risk Report", desc: "Generate ALTA-compliant title commitment", color: "bg-green-50 text-green-600" },
             ].map((step, i) => (
               <div key={i} className="relative">
                 {i < 4 && (
@@ -166,27 +166,27 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Nova Act Technical Deep Dive */}
+      {/* What You Get */}
       <section className="py-20 bg-gradient-to-br from-slate-900 to-slate-800 text-white">
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 mb-6">Amazon Nova Act + Nova Pro</Badge>
+              <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 mb-6">What You Get</Badge>
               <h2 className="text-4xl font-bold mb-6 leading-tight">
-                Real browser automation.<br />
-                Real county records.
+                Real searches.<br />
+                Real county records.<br />
+                Real results.
               </h2>
               <p className="text-slate-300 text-lg mb-8 leading-relaxed">
-                Title AI uses <span className="text-white font-semibold">Amazon Nova Act</span> to deploy
-                autonomous browser agents that navigate county recorder websites -- the same databases
-                human title examiners use. Combined with <span className="text-white font-semibold">Nova Pro</span> for
-                intelligent document analysis, we deliver production-grade title intelligence.
+                Title AI deploys autonomous browser agents that navigate county recorder
+                websites -- the same databases human title examiners use. Combined with
+                AI-powered document analysis, we deliver production-grade title intelligence.
               </p>
               <div className="space-y-3">
                 {[
-                  "Nova Act agents autonomously navigate 110+ county recorder portals",
-                  "AgentCore Browser Tool provides cloud-hosted Chromium with live streaming",
-                  "Nova Pro extracts structured deed records with source provenance tracking",
+                  "Autonomous browser agents navigate 110+ county recorder portals",
+                  "Full chain of title extraction with source provenance tracking",
+                  "Lien detection: tax, mortgage, HOA, judgment, mechanic's liens",
                   "ALTA-compliant reports with Schedule A/B and confidence scoring",
                   "Human-in-the-loop review workflow for licensed title examiners",
                 ].map((item, i) => (
@@ -197,29 +197,33 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 font-mono text-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="text-slate-500 ml-2 text-xs">nova-act-agent.py</span>
-              </div>
-              <div className="space-y-1 text-slate-300">
-                <div><span className="text-yellow-400">from</span> nova_act <span className="text-yellow-400">import</span> NovaAct</div>
-                <div><span className="text-yellow-400">from</span> nova_act.browser <span className="text-yellow-400">import</span> BrowserClient</div>
-                <div className="mt-2 text-slate-500"># Launch cloud browser via AgentCore</div>
-                <div>browser = BrowserClient()</div>
-                <div>live_url = browser.generate_live_view_url()</div>
-                <div className="mt-2 text-slate-500"># Navigate county recorder</div>
-                <div><span className="text-blue-400">with</span> NovaAct(browser=browser) <span className="text-blue-400">as</span> nova:</div>
-                <div className="pl-4">nova.goto(county_url)</div>
-                <div className="pl-4">nova.act(<span className="text-green-400">&quot;Search for &#123;address&#125;&quot;</span>)</div>
-                <div className="pl-4">deeds = nova.act_get(<span className="text-green-400">&quot;Extract all deed records&quot;</span>,</div>
-                <div className="pl-8">schema=DeedHistory)</div>
-                <div className="pl-4">liens = nova.act_get(<span className="text-green-400">&quot;Find active tax liens&quot;</span>,</div>
-                <div className="pl-8">schema=LienRecords)</div>
-                <div className="mt-2 text-slate-500"># Returns structured JSON</div>
-                <div><span className="text-yellow-400">return</span> TitleReport(deeds, liens)</div>
+            <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
+              <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-4">Sample Output</div>
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                    <span className="text-green-300 font-bold text-sm">Clear Title</span>
+                  </div>
+                  <p className="text-slate-400 text-xs">123 Main St, Harris County, TX</p>
+                  <p className="text-slate-500 text-xs mt-1">8 deeds traced · 0 active liens · 95% confidence</p>
+                </div>
+                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400" />
+                    <span className="text-red-300 font-bold text-sm">Liens Found</span>
+                  </div>
+                  <p className="text-slate-400 text-xs">456 Oak Ave, Los Angeles County, CA</p>
+                  <p className="text-slate-500 text-xs mt-1">12 deeds · 2 tax liens ($4,200) · Review required</p>
+                </div>
+                <div className="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldCheck className="w-4 h-4 text-yellow-400" />
+                    <span className="text-yellow-300 font-bold text-sm">ALTA Report Generated</span>
+                  </div>
+                  <p className="text-slate-400 text-xs">789 Pine Rd, Maricopa County, AZ</p>
+                  <p className="text-slate-500 text-xs mt-1">Schedule A/B · Provenance citations · PDF ready</p>
+                </div>
               </div>
             </div>
           </div>
@@ -267,59 +271,39 @@ export default function Home() {
               <BarChart3 className="w-8 h-8 text-green-600 mb-4" />
               <h3 className="text-xl font-bold text-slate-900 mb-3">Title AI Advantage</h3>
               <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600">Speed</span>
-                    <span className="font-bold text-green-700">4,800x faster</span>
-                  </div>
-                  <div className="h-2 bg-green-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: '98%' }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600">Cost</span>
-                    <span className="font-bold text-green-700">97% cheaper</span>
-                  </div>
-                  <div className="h-2 bg-green-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: '97%' }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600">Coverage</span>
-                    <span className="font-bold text-green-700">110+ counties live</span>
-                  </div>
+                {[
+                  { label: "Speed", value: "4,800x faster", pct: 98 },
+                  { label: "Cost", value: "97% cheaper", pct: 97 },
+                  { label: "Coverage", value: "110+ counties live", pct: 40 },
+                  { label: "Accuracy", value: "AI + human review", pct: 90 },
+                ].map((stat, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-600">{stat.label}</span>
+                      <span className="font-bold text-green-700">{stat.value}</span>
+                    </div>
                     <div className="h-2 bg-green-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: '40%' }} />
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${stat.pct}%` }} />
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600">Accuracy</span>
-                    <span className="font-bold text-green-700">AI-verified chains</span>
-                  </div>
-                  <div className="h-2 bg-green-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: '90%' }} />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Durable Agent Architecture */}
+      {/* Platform Features */}
       <section className="py-20 bg-[#fefce8]">
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="text-center mb-16">
-            <Badge className="bg-purple-100 text-purple-700 border-purple-200 mb-4">Architecture</Badge>
+            <Badge className="bg-purple-100 text-purple-700 border-purple-200 mb-4">Platform</Badge>
             <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">
               Built for production. Built to last.
             </h2>
             <p className="text-xl text-slate-500 max-w-3xl mx-auto">
-              Powered by Inngest durable execution, searches run reliably in the background --
-              even if you close your browser and come back hours later.
+              Enterprise-grade infrastructure that scales from individual searches
+              to processing thousands of transactions per day.
             </p>
           </div>
 
@@ -333,32 +317,32 @@ export default function Home() {
               },
               {
                 icon: Bot,
-                title: "Nova Act Browser Fleet",
-                desc: "Cloud-hosted Chromium browsers autonomously navigate county recorder websites via Amazon Nova Act with AgentCore Browser Tool.",
+                title: "Autonomous Browser Fleet",
+                desc: "Cloud-hosted browsers navigate county recorder websites and extract structured deed, lien, and encumbrance data automatically.",
                 color: "bg-blue-50 border-blue-200 text-blue-600"
               },
               {
-                icon: Cpu,
-                title: "Nova Pro Analysis",
-                desc: "Amazon Nova Pro powers intelligent document analysis -- chain of title extraction, lien detection, and risk scoring from raw deed records.",
+                icon: ShieldCheck,
+                title: "ALTA Compliance",
+                desc: "Reports follow ALTA standard format with Schedule A (property details) and Schedule B (exceptions), ready for underwriting review.",
                 color: "bg-yellow-50 border-yellow-200 text-yellow-600"
               },
               {
-                icon: Layers,
-                title: "Multi-Agent Pipeline",
-                desc: "Five specialized agents work in sequence: property lookup, browser automation, chain analysis, lien scan, and risk report generation.",
+                icon: Users,
+                title: "Human-in-the-Loop",
+                desc: "Licensed title examiners can review, comment on, and approve AI-generated reports section by section before they're finalized.",
                 color: "bg-green-50 border-green-200 text-green-600"
               },
               {
                 icon: Lock,
-                title: "Enterprise-Grade Data",
-                desc: "All search results persisted to Turso (libSQL) with full audit trail. ALTA-compliant reports with source provenance and confidence scoring.",
+                title: "Source Provenance",
+                desc: "Every data point is traced back to its source document with confidence scoring. Full audit trail for regulatory compliance.",
                 color: "bg-red-50 border-red-200 text-red-600"
               },
               {
                 icon: Globe,
-                title: "Scalable to Every County",
-                desc: "Currently covering 110+ counties across 20+ states. Architecture supports expansion to all 3,143 U.S. counties with health monitoring.",
+                title: "Nationwide Coverage",
+                desc: "110+ counties across 20+ states with continuous expansion. County health monitoring tracks recorder site availability in real-time.",
                 color: "bg-orange-50 border-orange-200 text-orange-600"
               },
             ].map((f, i) => (
@@ -374,35 +358,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Amazon Nova Stack */}
-      <section className="py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-        <div className="container mx-auto px-6 max-w-5xl text-center">
-          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 mb-6">Built on Amazon Nova</Badge>
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            The full Amazon Nova stack.
-          </h2>
-          <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-12">
-            Title AI showcases the power of combining Nova Act for UI automation
-            with Nova Pro for intelligent reasoning -- a new paradigm for enterprise AI.
-          </p>
-
-          <div className="grid md:grid-cols-4 gap-4">
-            {[
-              { label: "Nova Act", sub: "Browser Automation", desc: "Autonomous county recorder navigation" },
-              { label: "Nova Pro", sub: "AI Reasoning", desc: "Chain of title & risk analysis" },
-              { label: "AgentCore", sub: "Cloud Browser", desc: "Hosted Chromium with live streaming" },
-              { label: "Bedrock", sub: "Foundation Models", desc: "Scalable AI inference at production" },
-            ].map((item, i) => (
-              <div key={i} className="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-yellow-500/30 transition-colors">
-                <div className="text-yellow-400 font-bold text-lg mb-1">{item.label}</div>
-                <div className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">{item.sub}</div>
-                <div className="text-slate-500 text-sm">{item.desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA */}
       <section className="py-20 bg-yellow-500">
         <div className="container mx-auto px-6 text-center">
@@ -411,7 +366,7 @@ export default function Home() {
           </h2>
           <p className="text-slate-800 text-xl mb-8 max-w-2xl mx-auto">
             Enter any property address and watch autonomous AI agents deliver a complete
-            title report in seconds. No signup required.
+            title report in seconds.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/titleai">
@@ -423,14 +378,14 @@ export default function Home() {
                 Run Title Search
               </Button>
             </Link>
-            <Link href="/jobs">
+            <Link href="/titleai/chat">
               <Button
                 size="lg"
                 variant="outline"
                 className="font-bold text-lg h-14 px-10 rounded-xl border-2 border-slate-800 text-slate-900 hover:bg-slate-900 hover:text-white"
               >
-                <Workflow className="w-5 h-5 mr-2" />
-                Try Durable Agent
+                <MessageSquare className="w-5 h-5 mr-2" />
+                Chat with AI
               </Button>
             </Link>
           </div>

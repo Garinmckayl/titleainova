@@ -371,18 +371,18 @@ export function TitleChatClient() {
                 <PromptInputButton
                   variant="ghost"
                   className="text-slate-400 text-xs gap-1"
-                  tooltip="Nova Act browses county recorder websites in real-time"
+                  tooltip="Browses county recorder websites in real-time"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
-                  Nova Act
+                  Browser Agent
                 </PromptInputButton>
                 <PromptInputButton
                   variant="ghost"
                   className="text-slate-400 text-xs gap-1"
-                  tooltip="Amazon Nova Pro analyzes title data"
+                  tooltip="AI analyzes title data and generates reports"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
-                  Nova Pro
+                  Analysis
                 </PromptInputButton>
               </PromptInputTools>
               <PromptInputSubmit

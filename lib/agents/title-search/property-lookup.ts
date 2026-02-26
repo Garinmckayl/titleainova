@@ -242,6 +242,43 @@ function normalize(s: string): string {
  * Look up the county for a given address string.
  * Checks city names, county names, then tries US Census geocoder as fallback.
  */
+/** 
+ * Extract the likely city portion from an address string.
+ * Addresses typically follow: "123 Street Name, City, ST 12345"
+ * We extract the part after the last comma before the state code.
+ */
+function extractCityPortion(addr: string): string {
+  // Try to find city between commas: "street, CITY, ST ZIP" or "street, CITY ST ZIP"
+  const parts = addr.split(',').map(p => p.trim());
+  if (parts.length >= 2) {
+    // The city is usually the second-to-last part (before "ST ZIP")
+    // Or the last part if it contains a state code
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i].trim();
+      // Check if this part looks like "City ST ZIP" or just "City"
+      const stateZipMatch = part.match(/^(.+?)\s+[a-z]{2}\s*\d{5}/i);
+      if (stateZipMatch) return stateZipMatch[1].trim();
+      // If there's a next part with state code, this part is the city
+      if (i + 1 < parts.length) {
+        const next = parts[i + 1].trim();
+        if (next.match(/^[a-z]{2}\s*\d{5}/i) || next.match(/^[a-z]{2}$/i)) {
+          return part;
+        }
+      }
+    }
+    // Fallback: return everything after first comma
+    return parts.slice(1).join(' ');
+  }
+  return addr;
+}
+
+/** Check if a city name appears as a whole word/phrase in a string */
+function cityMatchesInString(str: string, city: string): boolean {
+  const escaped = city.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?:^|[,\\s])${escaped}(?:[,\\s]|$)`);
+  return regex.test(str);
+}
+
 export async function lookupCounty(address: string): Promise<CountyRecord | null> {
   const addr = normalize(address);
 
@@ -252,9 +289,22 @@ export async function lookupCounty(address: string): Promise<CountyRecord | null
     }
   }
 
-  // 2. City matching (e.g. "Laredo" -> Webb County)
-  for (const [city, countyName] of Object.entries(CITY_TO_COUNTY)) {
-    if (addr.includes(city.toLowerCase())) {
+  // 2. City matching — extract city portion to avoid matching street names
+  //    Sort by longest name first to avoid partial matches
+  const cityPortion = normalize(extractCityPortion(address));
+  const sortedCities = Object.entries(CITY_TO_COUNTY)
+    .sort((a, b) => b[0].length - a[0].length);
+  
+  for (const [city, countyName] of sortedCities) {
+    if (cityMatchesInString(cityPortion, city)) {
+      const found = ALL_COUNTIES.find(r => r.name === countyName);
+      if (found) return found;
+    }
+  }
+
+  // 2b. Fallback: also check full address for city names (handles non-standard formats)
+  for (const [city, countyName] of sortedCities) {
+    if (cityMatchesInString(addr, city)) {
       const found = ALL_COUNTIES.find(r => r.name === countyName);
       if (found) return found;
     }

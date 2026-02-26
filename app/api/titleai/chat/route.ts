@@ -5,7 +5,6 @@ import { getRecentSearches, getSearch, saveSearch, type ScreenshotRecord } from 
 import { lookupCounty } from "@/lib/agents/title-search/property-lookup";
 import { retrieveCountyRecords } from "@/lib/agents/title-search/record-retrieval";
 import { buildChainOfTitle, detectLiens, assessRisk, generateSummary } from "@/lib/agents/title-search/analysis";
-import { getMockDocs } from "@/lib/agents/title-search/mock";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -85,8 +84,8 @@ async function executeSearch({ address }: { address: string }): Promise<Record<s
     if (novaActData) {
       docs = [{ source: "Nova Act", url: county.recorderUrl || "", text: JSON.stringify(novaActData), type: "NovaAct" }];
     } else {
-      const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith("your_");
-      docs = !hasTavily ? getMockDocs(address, county.name) : await retrieveCountyRecords(address, county.name);
+      const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith("your_");
+      docs = !hasWebSearch ? [] : await retrieveCountyRecords(address, county.name);
     }
 
     const chain = novaActData?.ownershipChain?.length ? novaActData.ownershipChain : await buildChainOfTitle(docs);

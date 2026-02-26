@@ -148,9 +148,9 @@ export const titleSearchJob = inngest.createFunction(
       }
 
       // No real data available — fail honestly instead of using fake data
-      const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
-      if (hasTavily) {
-        sourceType = 'tavily_search';
+      const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith('your_');
+      if (hasWebSearch) {
+        sourceType = 'web_scrape';
         try {
           const docs = await retrieveCountyRecords(address, county.name);
           if (docs.length > 0) {

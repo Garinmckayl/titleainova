@@ -1,4 +1,4 @@
-import { searchTavily } from '@/lib/tools/tavily';
+import { searchLLMLayer } from '@/lib/tools/llmlayer';
 import { extractPdfFromUrl } from '@/lib/tools/textract';
 import { createCitation } from './provenance';
 import { SourceCitation, DataSourceType } from './types';
@@ -47,11 +47,11 @@ export interface RetrievedDocument {
 }
 
 /**
- * Retrieve county records via web search with Textract PDF processing.
+ * Retrieve county records via LLMLayer web search + Textract PDF processing.
  *
- * Key difference from before: PDFs are now the MOST valuable source.
- * County recorder deeds, liens, tax certs are all PDFs.
- * We use AWS Textract to extract text, form fields, and tables from them.
+ * Searches for property records using targeted queries,
+ * downloads and processes any PDFs found via AWS Textract,
+ * and scrapes web pages for supplementary data.
  */
 export async function retrieveCountyRecords(
   address: string,
@@ -59,40 +59,35 @@ export async function retrieveCountyRecords(
 ): Promise<RetrievedDocument[]> {
   const coreAddress = address.replace(/,.*$/, '');
 
-  // Search queries targeting both web pages and PDFs
+  // Targeted search queries for property records
   const queries = [
-    `"${address}" ${county} deed filetype:pdf`,
-    `${coreAddress} ${county} property records`,
-    `${coreAddress} ${county} appraisal district`,
+    `"${address}" ${county} deed records`,
+    `${coreAddress} ${county} property records owner`,
+    `${coreAddress} ${county} appraisal district property`,
     `"${address}" warranty deed`,
-    `${address} real estate title history`,
     `${coreAddress} ${county} deed records pdf`,
     `${coreAddress} ${county} lien records`,
+    `${coreAddress} property tax ${county}`,
   ];
 
   const documents: RetrievedDocument[] = [];
   const visitedUrls = new Set<string>();
 
-  console.log(`[TitleSearch] Starting retrieval for ${address} in ${county}`);
+  console.log(`[TitleSearch] Starting LLMLayer retrieval for ${address} in ${county}`);
 
   // Run all search queries in parallel
   const searchPromises = queries.map(async (query) => {
-    const results: { url: string; title: string; content?: string }[] = [];
-
-    if (process.env.TAVILY_API_KEY) {
-      try {
-        const tResults = await searchTavily(query);
-        results.push(...tResults.map(r => ({ ...r, content: r.content })));
-      } catch (e) {
-        console.warn(`[TitleSearch] Tavily failed for "${query}":`, e instanceof Error ? e.message : e);
-      }
+    try {
+      const results = await searchLLMLayer(query);
+      return results.map(r => ({ url: r.link, title: r.title, content: r.content }));
+    } catch (e) {
+      console.warn(`[TitleSearch] LLMLayer search failed for "${query}":`, e instanceof Error ? e.message : e);
+      return [];
     }
-
-    return results;
   });
 
   const allResults = (await Promise.all(searchPromises)).flat();
-  console.log(`[TitleSearch] Got ${allResults.length} raw search results`);
+  console.log(`[TitleSearch] Got ${allResults.length} raw search results from LLMLayer`);
 
   // Separate PDFs and web pages
   const pdfResults: typeof allResults = [];
@@ -112,14 +107,13 @@ export async function retrieveCountyRecords(
   console.log(`[TitleSearch] Found ${pdfResults.length} PDFs and ${webResults.length} web pages`);
 
   // Process PDFs with Textract (most valuable data source)
-  // Process up to 10 PDFs in parallel (Textract handles concurrency well)
   const pdfBatch = pdfResults.slice(0, 10);
   const pdfPromises = pdfBatch.map(async (res) => {
     try {
       const textractResult = await extractPdfFromUrl(res.url);
       if (!textractResult || textractResult.text.length < 50) return null;
 
-      const citation = createCitation('tavily_search', res.title, res.url, {
+      const citation = createCitation('web_scrape', res.title, res.url, {
         excerpt: textractResult.text.slice(0, 500),
         documentType: 'PDF',
       });
@@ -169,7 +163,7 @@ export async function retrieveCountyRecords(
 
     const content = res.content || await fetchWebPageText(res.url) || undefined;
     if (content) {
-      const citation = createCitation('tavily_search', res.title, res.url, {
+      const citation = createCitation('web_scrape', res.title, res.url, {
         excerpt: content.slice(0, 500),
         documentType: 'WebPage',
       });

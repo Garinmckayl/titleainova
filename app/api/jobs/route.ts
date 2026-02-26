@@ -84,9 +84,9 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
       docs = [{ source: 'County Recorder Browser Agent', url: county.recorderUrl || '', text: JSON.stringify(novaActData), type: 'NovaAct', citation }];
     } else {
       // Try web search as last resort (only if API key is valid)
-      const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
-      if (hasTavily) {
-        sourceType = 'tavily_search';
+      const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith('your_');
+      if (hasWebSearch) {
+        sourceType = 'web_scrape';
         try {
           docs = await retrieveCountyRecords(address, county.name);
           if (docs.length > 0) {

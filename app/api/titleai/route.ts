@@ -4,7 +4,6 @@ import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
 import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
-import { getMockDocs } from '@/lib/agents/title-search/mock';
 import { saveSearch, createReview, type ScreenshotRecord } from '@/lib/turso';
 import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
 import { notifyReviewRequested } from '@/lib/notifications';
@@ -135,19 +134,12 @@ export async function POST(req: NextRequest) {
         } else {
           send({ type: 'log', step: 'retrieval', message: `Falling back to web search for ${county.name}...` });
 
-          const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
-          const hasGoogle = process.env.GOOGLE_SEARCH_API_KEY && !process.env.GOOGLE_SEARCH_API_KEY.startsWith('your_');
-          if (!hasTavily && !hasGoogle) {
-            sourceType = 'mock_demo';
-            send({ type: 'log', step: 'retrieval', message: 'No search API keys — using demonstration mode.' });
-            docs = getMockDocs(address, county.name);
-            // Add mock citation
-            citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/', {
-              excerpt: 'This is simulated data for demonstration purposes only.',
-            }));
-            await new Promise(r => setTimeout(r, 800));
+          const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith('your_');
+          if (!hasWebSearch) {
+            send({ type: 'error', message: 'No search API configured. Cannot retrieve property records.' });
+            return;
           } else {
-            sourceType = 'tavily_search';
+            sourceType = 'web_scrape';
             docs = await retrieveCountyRecords(address, county.name);
             if (docs.length === 0) {
               send({ type: 'error', message: 'No digital records found. A manual courthouse search may be required.' });

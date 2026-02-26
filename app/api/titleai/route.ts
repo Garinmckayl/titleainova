@@ -107,52 +107,55 @@ export async function POST(req: NextRequest) {
           send({ type: 'log', step: 'lookup', message: `Property located in ${county.name}, ${county.state}.` });
         }
 
-        // Step 2: Browser agent SSE streaming (real-time browser logs to UI)
-        send({ type: 'progress', step: 'retrieval', message: `Launching browser agent for ${county.name} recorder...` });
+        // Step 2: Record retrieval — run web search immediately (fast, reliable)
+        // and optionally try browser agent in parallel
+        send({ type: 'progress', step: 'retrieval', message: `Searching property records for ${county.name}...` });
 
-        const novaActData = await streamNovaActSearch(address, county.name, send, collectedScreenshots);
+        // Always run LLMLayer + Tax Office search (this is what finds MORGAN SPENCER LEE)
+        const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith('your_');
+        
+        let novaActData: any = null;
         let docs: any[] = [];
-        let sourceType: DataSourceType = 'tavily_search';
+        let sourceType: DataSourceType = 'web_scrape';
         const citations: SourceCitation[] = [];
 
-        if (novaActData) {
-          sourceType = 'nova_act';
-          send({ type: 'progress', step: 'chain', message: `Browser agent extracted ${novaActData.ownershipChain?.length || 0} deed records from county recorder.` });
-
-          const citation = createCitation('nova_act', `${county.name} Official Records — Browser Agent`, county.recorderUrl || '', {
-            documentType: 'County Recorder Official Records',
-          });
-          citations.push(citation);
-
-          docs = [{
-            source: 'County Recorder Browser Agent',
-            url: county.recorderUrl || '',
-            text: JSON.stringify(novaActData),
-            type: 'NovaAct',
-            citation,
-          }];
-        } else {
-          send({ type: 'log', step: 'retrieval', message: `Falling back to web search for ${county.name}...` });
-
-          const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith('your_');
-          if (!hasWebSearch) {
-            send({ type: 'error', message: 'No search API configured. Cannot retrieve property records.' });
-            return;
-          } else {
-            sourceType = 'web_scrape';
-            docs = await retrieveCountyRecords(address, county.name);
-            if (docs.length === 0) {
-              send({ type: 'error', message: 'No digital records found. A manual courthouse search may be required.' });
-              return;
-            }
-            // Collect citations from docs
-            for (const d of docs) {
-              if (d.citation) citations.push(d.citation);
-            }
-            send({ type: 'log', step: 'retrieval', message: `Analyzed ${docs.length} property records from web search.` });
+        // Start web search immediately (completes in ~5-12s, returns real owner data)
+        if (hasWebSearch) {
+          send({ type: 'log', step: 'retrieval', message: `Querying ${county.name} tax office + web search...` });
+          docs = await retrieveCountyRecords(address, county.name);
+          for (const d of docs) {
+            if (d.citation) citations.push(d.citation);
           }
-          send({ type: 'progress', step: 'chain', message: 'Building chain of title with AI analysis...' });
+          send({ type: 'log', step: 'retrieval', message: `Analyzed ${docs.length} property records.` });
         }
+
+        // Try browser agent only if web search found nothing
+        if (docs.length === 0) {
+          send({ type: 'log', step: 'retrieval', message: `Launching browser agent for ${county.name} recorder...` });
+          novaActData = await streamNovaActSearch(address, county.name, send, collectedScreenshots);
+          
+          if (novaActData) {
+            sourceType = 'nova_act';
+            const citation = createCitation('nova_act', `${county.name} Official Records — Browser Agent`, county.recorderUrl || '', {
+              documentType: 'County Recorder Official Records',
+            });
+            citations.push(citation);
+            docs = [{
+              source: 'County Recorder Browser Agent',
+              url: county.recorderUrl || '',
+              text: JSON.stringify(novaActData),
+              type: 'NovaAct',
+              citation,
+            }];
+          }
+        }
+
+        if (docs.length === 0) {
+          send({ type: 'error', message: 'No digital records found. A manual courthouse search may be required.' });
+          return;
+        }
+
+        send({ type: 'progress', step: 'chain', message: 'Building chain of title with AI analysis...' });
 
         // Step 3: Enhanced analysis pipeline with provenance + ALTA
         send({ type: 'progress', step: 'liens', message: 'Scanning for active liens and encumbrances...' });

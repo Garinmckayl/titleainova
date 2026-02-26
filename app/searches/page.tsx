@@ -78,13 +78,21 @@ function SourceBadge({ source }: { source: string | null }) {
 
 /* ─── Detail view for a single search ────────────────────────── */
 function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const getShareUrl = () => {
+    const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.thebigfourai.com';
+    return `${base}/report?id=${row.id}`;
+  };
+
   const handleShare = () => {
-    const url = `${window.location.origin}/report?id=${row.id}`;
+    const url = getShareUrl();
     if (navigator.share) {
       navigator.share({ title: `Title Report - ${row.address}`, url });
     } else {
       navigator.clipboard.writeText(url);
-      alert('Report link copied to clipboard!');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -115,8 +123,8 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
         </div>
         <div className="flex gap-2">
           <Button onClick={handleShare} variant="outline" size="sm" className="gap-1.5 text-yellow-700 border-yellow-200 hover:bg-yellow-50">
-            <Share2 className="h-3.5 w-3.5" />
-            Share Report
+            {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Share2 className="h-3.5 w-3.5" />}
+            {copied ? 'Link Copied!' : 'Share Report'}
           </Button>
           <Button onClick={onClose} variant="outline" size="sm" className="gap-1.5">
             <X className="h-3.5 w-3.5" /> Back
@@ -584,12 +592,15 @@ export default function SearchesPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const url = `${window.location.origin}/report?id=${row.id}`;
+                                  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.thebigfourai.com';
+                                  const url = `${base}/report?id=${row.id}`;
                                   if (navigator.share) {
                                     navigator.share({ title: `Title Report - ${row.address}`, url });
                                   } else {
                                     navigator.clipboard.writeText(url);
-                                    alert('Report link copied!');
+                                    const btn = e.currentTarget;
+                                    btn.title = 'Copied!';
+                                    setTimeout(() => { btn.title = 'Share report link'; }, 2000);
                                   }
                                 }}
                                 className="p-2 rounded-lg text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 transition-colors"

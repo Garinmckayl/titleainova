@@ -81,7 +81,8 @@ function ReportPageContent() {
   }, [id]);
 
   const handleShare = () => {
-    const url = `${window.location.origin}/report?id=${id}`;
+    const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.thebigfourai.com';
+    const url = `${base}/report?id=${id}`;
     if (navigator.share) {
       navigator.share({ title: `Title Report - ${report?.address}`, url });
     } else {

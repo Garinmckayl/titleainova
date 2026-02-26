@@ -20,18 +20,36 @@ const COUNTY_TAX_CONFIGS: Record<string, CountyTaxConfig> = {
 
 /**
  * Parse a US address into street number and street name.
+ * Handles both comma-separated and non-comma formats:
+ *   "4029 Colibri Drive, Laredo, TX 78046"
+ *   "4029 colibri drive Laredo tx 78046"
  */
 function parseStreetAddress(address: string): { streetNumber: string; streetName: string } | null {
-  const street = address.replace(/,.*$/, '').trim();
+  // First, try to isolate the street portion (before city/state/zip)
+  let street = address.trim();
+  
+  // If there are commas, take everything before the first comma
+  if (street.includes(',')) {
+    street = street.replace(/,.*$/, '').trim();
+  } else {
+    // No commas — strip state+zip pattern from the end: "TX 78046" or "tx78046"
+    street = street.replace(/\s+[a-zA-Z]{2}\s*\d{5}(-\d{4})?\s*$/, '').trim();
+    // Also try to strip a known city name from the end by looking for
+    // the pattern: street type followed by remaining words (city name)
+    const streetTypeMatch = street.match(
+      /^(\d+\s+.+?\s+(?:Dr|Drive|St|Street|Ave|Avenue|Blvd|Boulevard|Ln|Lane|Ct|Court|Rd|Road|Way|Pl|Place|Cir|Circle|Trl|Trail|Loop|Pkwy|Parkway)\.?)\s+.+$/i
+    );
+    if (streetTypeMatch) {
+      street = streetTypeMatch[1].trim();
+    }
+  }
+
+  // Now parse: "4029 Colibri Drive" -> number=4029, name=Colibri
   const match = street.match(/^(\d+)\s+(.+?)(?:\s+(?:Dr|Drive|St|Street|Ave|Avenue|Blvd|Boulevard|Ln|Lane|Ct|Court|Rd|Road|Way|Pl|Place|Cir|Circle|Trl|Trail|Loop|Pkwy|Parkway)\.?\s*)?$/i);
   if (match) {
-    // Return the full street name including suffix for exact matching
-    const fullName = street.replace(/^\d+\s+/, '');
-    // Extract just the name portion (before the street type suffix)
-    const nameOnly = match[2];
-    return { streetNumber: match[1], streetName: nameOnly };
+    return { streetNumber: match[1], streetName: match[2] };
   }
-  // Simple fallback: first token is number, rest is name
+  // Simple fallback: first token is number, rest is street name
   const parts = street.split(/\s+/);
   if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
     return { streetNumber: parts[0], streetName: parts.slice(1).join(' ') };

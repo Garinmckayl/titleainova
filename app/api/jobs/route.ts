@@ -210,6 +210,35 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function PATCH(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get('id');
+  const action = searchParams.get('action');
+
+  if (!id) return NextResponse.json({ error: 'Job ID is required' }, { status: 400 });
+
+  try {
+    if (action === 'cancel') {
+      await updateJob(id, {
+        status: 'failed',
+        current_step: 'error',
+        progress_pct: 0,
+        log: 'Search cancelled by user — the search was taking too long. You can try again.',
+        error: 'Cancelled: Search timed out or was manually stopped.',
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+  } catch (err: any) {
+    console.error('[/api/jobs PATCH]', err);
+    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

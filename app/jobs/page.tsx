@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Search, Building2, MapPin, Loader2, ArrowRight, CheckCircle2,
   AlertTriangle, Clock, Terminal, ChevronDown, Download, FileText,
-  ShieldCheck, Workflow, RefreshCw, Play, ExternalLink, Camera
+  ShieldCheck, Workflow, RefreshCw, Play, ExternalLink, Camera,
+  XCircle, Zap
 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,17 +38,54 @@ interface Job {
 
 /* ─── Step definitions ───────────────────────────────────────── */
 const STEPS = [
-  { id: 'lookup',    label: 'Lookup',       pct: 20 },
-  { id: 'retrieval', label: 'Retrieval',    pct: 40 },
-  { id: 'chain',     label: 'Chain',        pct: 55 },
-  { id: 'liens',     label: 'Liens',        pct: 65 },
-  { id: 'risk',      label: 'Risk',         pct: 80 },
-  { id: 'summary',   label: 'Report',       pct: 90 },
-  { id: 'complete',  label: 'Done',         pct: 100 },
+  { id: 'lookup',    label: 'Finding County',  pct: 20 },
+  { id: 'retrieval', label: 'Pulling Records', pct: 40 },
+  { id: 'chain',     label: 'Tracing Owners',  pct: 55 },
+  { id: 'liens',     label: 'Checking Liens',  pct: 65 },
+  { id: 'risk',      label: 'Assessing Risk',  pct: 80 },
+  { id: 'summary',   label: 'Building Report', pct: 90 },
+  { id: 'complete',  label: 'Done',            pct: 100 },
 ];
 
+/* ─── Friendly status labels ─────────────────────────────────── */
+const STATUS_LABELS: Record<JobStatus, string> = {
+  queued: 'In Queue',
+  running: 'Working on it',
+  completed: 'Report Ready',
+  failed: 'Issue Encountered',
+};
+
+/* ─── Helper: Determine if a job appears stuck ─────────────── */
+function isJobStuck(job: Job): boolean {
+  if (job.status !== 'running') return false;
+  const updatedAt = new Date(job.updated_at).getTime();
+  const now = Date.now();
+  // If running for more than 5 minutes without progress update, it's probably stuck
+  return (now - updatedAt) > 5 * 60 * 1000;
+}
+
+/* ─── Helper: Time elapsed string ─────────────────────────── */
+function getElapsedTime(createdAt: string): string {
+  const diff = Date.now() - new Date(createdAt).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h ago`;
+  if (hours > 0) return `${hours}h ${mins % 60}m ago`;
+  if (mins > 0) return `${mins}m ago`;
+  return 'just now';
+}
+
 /* ─── Status badge ───────────────────────────────────────────── */
-function StatusBadge({ status }: { status: JobStatus }) {
+function StatusBadge({ status, stuck }: { status: JobStatus; stuck?: boolean }) {
+  if (stuck) {
+    return (
+      <Badge variant="outline" className={cn('gap-1.5 text-xs font-semibold bg-orange-50 text-orange-700 border-orange-200')}>
+        <AlertTriangle className="w-3 h-3" />
+        May be stuck
+      </Badge>
+    );
+  }
   const styles: Record<JobStatus, string> = {
     queued: 'bg-slate-100 text-slate-600 border-slate-200',
     running: 'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -63,16 +101,30 @@ function StatusBadge({ status }: { status: JobStatus }) {
   return (
     <Badge variant="outline" className={cn('gap-1.5 text-xs font-semibold', styles[status])}>
       {icons[status]}
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+      {STATUS_LABELS[status]}
     </Badge>
   );
 }
 
+/* ─── Friendly log formatter ─────────────────────────────────── */
+function formatLogMessage(log: string): string {
+  // Replace technical jargon with user-friendly language
+  return log
+    .replace(/inngest[-_]durable[-_]agent/gi, 'search-agent')
+    .replace(/inngest/gi, 'background engine')
+    .replace(/durable execution/gi, 'background processing')
+    .replace(/step\.run/gi, 'processing step')
+    .replace(/\[screenshot\]/gi, 'Captured screenshot:')
+    .replace(/\[ERROR\]/gi, 'Issue:')
+    .replace(/\[DEBUG\]/gi, 'Details:');
+}
+
 /* ─── Job detail panel ───────────────────────────────────────── */
-function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
+function JobDetail({ job, onClose, onCancel }: { job: Job; onClose: () => void; onCancel: (id: string) => void }) {
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const [showLogs, setShowLogs] = useState(true);
   const userScrolledUp = useRef(false);
+  const stuck = isJobStuck(job);
 
   // Auto-scroll logs only while running AND user hasn't scrolled up
   useEffect(() => {
@@ -121,12 +173,18 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
           <div>
             <h2 className="text-xl font-bold text-slate-900">{job.address}</h2>
             <div className="flex items-center gap-3 mt-1">
-              <StatusBadge status={job.status} />
-              <span className="text-xs text-slate-400 font-mono">{job.id}</span>
+              <StatusBadge status={job.status} stuck={stuck} />
+              <span className="text-xs text-slate-400">Started {getElapsedTime(job.created_at)}</span>
             </div>
           </div>
         </div>
         <div className="flex gap-2">
+          {stuck && (
+            <Button onClick={() => onCancel(job.id)} size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 gap-1.5">
+              <XCircle className="h-3.5 w-3.5" />
+              Cancel & Retry
+            </Button>
+          )}
           {job.status === 'completed' && job.result?.pdfBase64 && (
             <Button onClick={downloadPDF} size="sm" className="bg-slate-900 text-white gap-1.5">
               <Download className="h-3.5 w-3.5" />
@@ -134,15 +192,29 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
             </Button>
           )}
           <Button onClick={onClose} variant="outline" size="sm">
-            Back to Jobs
+            Back to Searches
           </Button>
         </div>
       </div>
 
+      {/* Stuck job warning */}
+      {stuck && (
+        <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-orange-800">This search appears to be stuck</p>
+            <p className="text-sm text-orange-600 mt-1">
+              It hasn&apos;t made progress in over 5 minutes. This can happen if a county recorder website 
+              is temporarily unavailable. You can cancel and retry, or wait a bit longer.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Step progress */}
       <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-semibold text-slate-700">Progress</span>
+          <span className="text-sm font-semibold text-slate-700">Search Progress</span>
           <span className="text-sm font-bold text-yellow-600">{job.progress_pct}%</span>
         </div>
         {/* Progress bar */}
@@ -152,6 +224,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
               "h-full rounded-full",
               job.status === 'failed' ? 'bg-red-500' :
               job.status === 'completed' ? 'bg-green-500' :
+              stuck ? 'bg-orange-400' :
               'bg-gradient-to-r from-yellow-400 to-orange-500'
             )}
             initial={{ width: 0 }}
@@ -175,7 +248,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                   {isDone ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
                 </div>
                 <span className={cn(
-                  "text-[10px] font-semibold uppercase tracking-wider",
+                  "text-[10px] font-semibold tracking-wider",
                   isActive || isDone ? 'text-slate-700' : 'text-slate-300'
                 )}>
                   {step.label}
@@ -186,7 +259,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
         </div>
       </div>
 
-      {/* Live logs */}
+      {/* Live activity log */}
       <div className="rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
         <div className="bg-slate-900 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -197,12 +270,18 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
             </div>
             <div className="flex items-center gap-2 text-slate-400 text-xs font-mono">
               <Terminal className="h-3.5 w-3.5" />
-              inngest-durable-agent — {job.id}
+              search-activity
             </div>
-            {job.status === 'running' && (
+            {job.status === 'running' && !stuck && (
               <span className="flex items-center gap-1.5 text-yellow-400 text-xs font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                live
+                working
+              </span>
+            )}
+            {stuck && (
+              <span className="flex items-center gap-1.5 text-orange-400 text-xs font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                stalled
               </span>
             )}
           </div>
@@ -228,16 +307,16 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                 className="bg-slate-950 p-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1"
               >
                 {job.logs.length === 0 && (
-                  <span className="text-slate-600">Waiting for agent to start...</span>
+                  <span className="text-slate-600">Getting ready to start your search...</span>
                 )}
                 {job.logs.map((log, i) => (
                   <div key={i} className="flex gap-3 items-start leading-relaxed">
                     <span className="text-slate-600 shrink-0 select-none">{String(i + 1).padStart(3, '0')}</span>
                     <span className="shrink-0 w-2 h-2 rounded-full mt-1.5 bg-yellow-400" />
-                    <span className="text-slate-200 break-all">{log}</span>
+                    <span className="text-slate-200 break-all">{formatLogMessage(log)}</span>
                   </div>
                 ))}
-                {job.status === 'running' && (
+                {job.status === 'running' && !stuck && (
                   <div className="flex gap-3 items-center">
                     <span className="text-slate-600 select-none">&nbsp;&nbsp;&nbsp;</span>
                     <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shrink-0" />
@@ -252,9 +331,13 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
 
       {/* Error */}
       {job.error && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 shrink-0" />
-          <span className="font-medium">{job.error}</span>
+        <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Something went wrong</p>
+            <p className="text-sm mt-1">{job.error}</p>
+            <p className="text-xs text-red-400 mt-2">You can try running this search again with a new request.</p>
+          </div>
         </div>
       )}
 
@@ -264,7 +347,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
           <div className="bg-slate-900 px-4 py-3 flex items-center gap-2">
             <Camera className="h-4 w-4 text-green-400" />
             <span className="text-slate-300 text-sm font-semibold">
-              Browser Screenshots ({job.screenshots.length})
+              What the AI Saw ({job.screenshots.length} screenshots)
             </span>
           </div>
           <div className="bg-slate-950 p-4">
@@ -432,7 +515,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                   <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
                     <FileText className="h-5 w-5" />
                   </div>
-                  <h3 className="font-bold text-lg text-slate-900">ALTA Schedule A — Title Commitment</h3>
+                  <h3 className="font-bold text-lg text-slate-900">ALTA Schedule A &mdash; Title Commitment</h3>
                   {job.result.altaScheduleA.commitmentNumber && (
                     <Badge variant="outline" className="ml-auto font-mono text-xs">{job.result.altaScheduleA.commitmentNumber}</Badge>
                   )}
@@ -475,13 +558,13 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                   <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
                     <ShieldCheck className="h-5 w-5" />
                   </div>
-                  <h3 className="font-bold text-lg text-slate-900">ALTA Schedule B — Requirements & Exceptions</h3>
+                  <h3 className="font-bold text-lg text-slate-900">ALTA Schedule B &mdash; Requirements & Exceptions</h3>
                 </div>
 
                 {/* Requirements */}
                 {job.result.altaScheduleB.requirements?.length > 0 && (
                   <div className="mb-6">
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part I — Requirements</h4>
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part I &mdash; Requirements</h4>
                     <div className="space-y-2">
                       {job.result.altaScheduleB.requirements.map((req: any, i: number) => (
                         <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
@@ -509,7 +592,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                 {/* Schedule B Exceptions */}
                 {job.result.altaScheduleB.exceptions?.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part II — Exceptions from Coverage</h4>
+                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Part II &mdash; Exceptions from Coverage</h4>
                     <div className="space-y-2">
                       {job.result.altaScheduleB.exceptions.map((ex: any, i: number) => (
                         <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100"
@@ -554,7 +637,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                     <div className="mt-3 space-y-1">
                       {job.result.sources.map((src: any, i: number) => (
                         <div key={i} className="text-xs text-slate-400 truncate">
-                          {src.sourceName} — {src.url}
+                          {src.sourceName} &mdash; {src.url}
                         </div>
                       ))}
                     </div>
@@ -589,7 +672,7 @@ function JobDetail({ job, onClose }: { job: Job; onClose: () => void }) {
                   {job.result.overallConfidence.factors?.length > 0 && (
                     <div className="mt-3 space-y-1">
                       {job.result.overallConfidence.factors.map((f: string, i: number) => (
-                        <p key={i} className="text-xs text-slate-500">• {f}</p>
+                        <p key={i} className="text-xs text-slate-500">&bull; {f}</p>
                       ))}
                     </div>
                   )}
@@ -648,6 +731,17 @@ export default function JobsPage() {
     }
   }, []);
 
+  /* ── Cancel a stuck job ────────────────────────────────────── */
+  const cancelJob = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/jobs?id=${id}&action=cancel`, { method: 'PATCH' });
+      await fetchJobs();
+      setSelectedJob(null);
+    } catch (e: any) {
+      console.error('Failed to cancel job', e);
+    }
+  }, [fetchJobs]);
+
   /* ── Initial load + polling ────────────────────────────────── */
   useEffect(() => {
     fetchJobs().finally(() => setLoading(false));
@@ -701,14 +795,14 @@ export default function JobsPage() {
       <div className="container mx-auto max-w-5xl px-6 py-12">
         {/* Page Header */}
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-purple-100 flex items-center justify-center text-purple-600">
-            <Workflow className="h-7 w-7" />
+          <div className="w-14 h-14 rounded-2xl bg-yellow-100 flex items-center justify-center text-yellow-600">
+            <Zap className="h-7 w-7" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Durable Agent Jobs</h1>
+            <h1 className="text-3xl font-bold text-slate-900">Background Searches</h1>
             <p className="text-slate-500 mt-1">
-              Long-running title searches powered by Inngest durable execution.
-              Close your browser — come back anytime.
+              Start a search and go do other things &mdash; the AI keeps working even if you close your browser.
+              We&apos;ll notify you when your report is ready.
             </p>
           </div>
         </div>
@@ -720,7 +814,7 @@ export default function JobsPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <Input
-                  placeholder="Enter property address for background search..."
+                  placeholder="Enter any U.S. property address..."
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && submitJob()}
@@ -730,16 +824,16 @@ export default function JobsPage() {
               <Button
                 onClick={submitJob}
                 disabled={submitting || !address.trim()}
-                className="h-14 px-8 bg-purple-600 hover:bg-purple-500 text-white font-bold text-base rounded-xl shadow-lg shadow-purple-500/20 gap-2"
+                className="h-14 px-8 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold text-base rounded-xl shadow-lg shadow-yellow-500/20 gap-2"
               >
                 {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-                Start Durable Job
+                Start Search
               </Button>
             </div>
           </CardContent>
           <div className="px-4 pb-3 flex items-center gap-2 text-xs text-slate-400">
-            <Workflow className="h-3 w-3" />
-            Runs via Inngest — survives browser close, network drops, and server restarts
+            <CheckCircle2 className="h-3 w-3 text-green-500" />
+            Works in the background &mdash; close your browser and come back anytime. You&apos;ll get a notification when it&apos;s done.
           </div>
         </Card>
 
@@ -757,6 +851,7 @@ export default function JobsPage() {
               key={selectedJob.id}
               job={selectedJob}
               onClose={() => setSelectedJob(null)}
+              onCancel={cancelJob}
             />
           ) : (
             <motion.div
@@ -773,17 +868,20 @@ export default function JobsPage() {
 
               {!loading && jobs.length === 0 && (
                 <div className="text-center py-20">
-                  <Workflow className="h-16 w-16 text-slate-200 mx-auto mb-4" />
-                  <p className="text-xl font-semibold text-slate-400 mb-2">No durable jobs yet</p>
+                  <Zap className="h-16 w-16 text-slate-200 mx-auto mb-4" />
+                  <p className="text-xl font-semibold text-slate-400 mb-2">No background searches yet</p>
                   <p className="text-slate-400 mb-4">
-                    Submit a property address above to start a background title search.
+                    Enter a property address above to start. The AI will search county records, 
+                    trace ownership, and build your report while you do other things.
                   </p>
                 </div>
               )}
 
               {!loading && jobs.length > 0 && (
                 <div className="space-y-3">
-                  {jobs.map((job, i) => (
+                  {jobs.map((job, i) => {
+                    const stuck = isJobStuck(job);
+                    return (
                     <motion.div
                       key={job.id}
                       initial={{ opacity: 0, y: 12 }}
@@ -807,6 +905,7 @@ export default function JobsPage() {
                               "h-full transition-all duration-500",
                               job.status === 'failed' ? 'bg-red-500' :
                               job.status === 'completed' ? 'bg-green-500' :
+                              stuck ? 'bg-orange-400' :
                               'bg-gradient-to-r from-yellow-400 to-orange-500'
                             )}
                             style={{ width: `${job.progress_pct}%` }}
@@ -821,21 +920,23 @@ export default function JobsPage() {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <h3 className="font-bold text-slate-900 truncate">{job.address}</h3>
-                                  <StatusBadge status={job.status} />
+                                  <StatusBadge status={job.status} stuck={stuck} />
                                 </div>
                                 <div className="flex items-center gap-2 text-slate-400 text-xs mt-1">
-                                  <span className="font-mono">{job.id}</span>
-                                  <span>-</span>
                                   <Clock className="h-3 w-3" />
-                                  <span>
-                                    {new Date(job.created_at).toLocaleDateString('en-US', {
-                                      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                    })}
-                                  </span>
-                                  {job.current_step && job.status === 'running' && (
+                                  <span>{getElapsedTime(job.created_at)}</span>
+                                  {job.current_step && job.status === 'running' && !stuck && (
                                     <>
-                                      <span>-</span>
-                                      <span className="text-yellow-600 font-semibold">{job.current_step}</span>
+                                      <span>&mdash;</span>
+                                      <span className="text-yellow-600 font-semibold">
+                                        {STEPS.find(s => s.id === job.current_step)?.label || job.current_step}
+                                      </span>
+                                    </>
+                                  )}
+                                  {stuck && (
+                                    <>
+                                      <span>&mdash;</span>
+                                      <span className="text-orange-600 font-semibold">May need attention</span>
                                     </>
                                   )}
                                 </div>
@@ -849,7 +950,8 @@ export default function JobsPage() {
                         </CardContent>
                       </Card>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </motion.div>

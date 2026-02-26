@@ -1,0 +1,272 @@
+import { NextRequest } from 'next/server';
+import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
+import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
+import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
+import { generateTitleReportPDF } from '@/lib/title-report-generator';
+import { saveSearch, createReview, type ScreenshotRecord } from '@/lib/turso';
+import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
+import { notifyReviewRequested } from '@/lib/notifications';
+import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
+
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
+/**
+ * Stream browser agent progress + final data from the Python sidecar via SSE.
+ * Captures screenshots into the provided array so they can be persisted to DB.
+ */
+async function streamNovaActSearch(
+  address: string,
+  countyName: string,
+  send: (data: any) => void,
+  collectedScreenshots: ScreenshotRecord[],
+  timeoutMs = 120_000,  // 120s max — enough to get search + first screenshot + partial deed nav
+): Promise<any | null> {
+  const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
+  if (!sidecarUrl) {
+    send({ type: 'log', step: 'retrieval', message: 'Browser agent service not configured — using web search fallback.' });
+    return null;
+  }
+
+  let upstreamRes: Response;
+  const controller = new AbortController();
+  // Abort after timeoutMs so we don't hang the whole request
+  const timer = setTimeout(() => {
+    controller.abort();
+    send({ type: 'log', step: 'retrieval', message: `Nova Act browser stream collected — proceeding with AI analysis.` });
+  }, timeoutMs);
+
+  try {
+    upstreamRes = await fetch(`${sidecarUrl}/search-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, county: countyName }),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') return null;
+    send({ type: 'log', step: 'retrieval', message: `Browser agent sidecar unavailable (${err.message}) — using fallback mode.` });
+    return null;
+  }
+
+  if (!upstreamRes.ok || !upstreamRes.body) {
+    clearTimeout(timer);
+    send({ type: 'log', step: 'retrieval', message: `Sidecar returned HTTP ${upstreamRes.status} — using fallback mode.` });
+    return null;
+  }
+
+  const reader = upstreamRes.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let resultData: any = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.type === 'progress') {
+            send({ type: 'log', step: evt.step, message: evt.message });
+          } else if (evt.type === 'live_view') {
+            send({ type: 'live_view', url: evt.url });
+          } else if (evt.type === 'screenshot') {
+            // Forward to frontend AND collect for DB persistence
+            send({ type: 'screenshot', label: evt.label, step: evt.step, data: evt.data });
+            collectedScreenshots.push({ label: evt.label, step: evt.step, data: evt.data });
+          } else if (evt.type === 'result') {
+            resultData = evt.data;
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    }
+  } catch (err: any) {
+    if (err.name !== 'AbortError') {
+      send({ type: 'log', step: 'retrieval', message: `Browser stream ended: ${err.message}` });
+    }
+  } finally {
+    clearTimeout(timer);
+    reader.cancel().catch(() => {});
+  }
+
+  return resultData;
+}
+
+export async function POST(req: NextRequest) {
+  const userId: string | null = null; // Clerk auth disabled when NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set
+  const { address } = await req.json();
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (data: any) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+
+      // Collect screenshots from the sidecar to save in DB
+      const collectedScreenshots: ScreenshotRecord[] = [];
+
+      try {
+        // Step 1: County Lookup
+        send({ type: 'progress', step: 'lookup', message: 'Identifying county and recorder...' });
+        let county = await lookupCounty(address);
+
+        if (!county) {
+          county = { name: 'Unknown County', state: 'US', recorderUrl: '', searchUrl: '' };
+          send({ type: 'log', step: 'lookup', message: 'County not in database — defaulting to general search.' });
+        } else {
+          send({ type: 'log', step: 'lookup', message: `Property located in ${county.name}, ${county.state}.` });
+        }
+
+        // Step 2: Record retrieval — run web search immediately (fast, reliable)
+        // and optionally try browser agent in parallel
+        send({ type: 'progress', step: 'retrieval', message: `Searching property records for ${county.name}...` });
+
+        // Always run LLMLayer + Tax Office search (this is what finds MORGAN SPENCER LEE)
+        const hasWebSearch = process.env.LLMLAYER_API_KEY && !process.env.LLMLAYER_API_KEY.startsWith('your_');
+        
+        let novaActData: any = null;
+        let docs: any[] = [];
+        let sourceType: DataSourceType = 'web_scrape';
+        const citations: SourceCitation[] = [];
+
+        // Run Nova Act browser agent AND web search in parallel for the best demo experience.
+        // Nova Act streams live screenshots of the county portal; web search provides fallback data.
+        send({ type: 'log', step: 'retrieval', message: `Launching Nova Act browser agent for ${county.name} recorder...` });
+
+        // Kick off both in parallel
+        const novaActPromise = streamNovaActSearch(address, county.name, send, collectedScreenshots);
+        const webSearchPromise = hasWebSearch
+          ? (async () => {
+              send({ type: 'log', step: 'retrieval', message: `Also querying ${county.name} tax office + web search...` });
+              const webDocs = await retrieveCountyRecords(address, county.name);
+              send({ type: 'log', step: 'retrieval', message: `Web search found ${webDocs.length} record(s).` });
+              return webDocs;
+            })()
+          : Promise.resolve([] as any[]);
+
+        // Wait for both
+        const [novaResult, webDocs] = await Promise.all([novaActPromise, webSearchPromise]);
+        novaActData = novaResult;
+
+        if (novaActData) {
+          sourceType = 'nova_act';
+          const citation = createCitation('nova_act', `${county.name} Official Records — Browser Agent`, county.recorderUrl || '', {
+            documentType: 'County Recorder Official Records',
+          });
+          citations.push(citation);
+          docs = [{
+            source: 'County Recorder Browser Agent',
+            url: county.recorderUrl || '',
+            text: JSON.stringify(novaActData),
+            type: 'NovaAct',
+            citation,
+          }];
+        }
+
+        // Merge web search docs (as supplemental sources)
+        for (const d of webDocs) {
+          if (d.citation) citations.push(d.citation);
+          docs.push(d);
+        }
+
+        if (docs.length === 0) {
+          send({ type: 'error', message: 'No digital records found. A manual courthouse search may be required.' });
+          return;
+        }
+
+        send({ type: 'progress', step: 'chain', message: 'Building chain of title with AI analysis...' });
+
+        // Step 3: Enhanced analysis pipeline with provenance + ALTA
+        send({ type: 'progress', step: 'liens', message: 'Scanning for active liens and encumbrances...' });
+        send({ type: 'progress', step: 'risk', message: 'Assessing title risks with AI analysis...' });
+
+        const analysis = await runAnalysisPipeline(docs, address, county.name, sourceType, {
+          parcelId: novaActData?.parcelId,
+          legalDescription: novaActData?.legalDescription,
+          preExtractedChain: novaActData?.ownershipChain,
+          preExtractedLiens: novaActData?.liens,
+        });
+
+        // Compute overall confidence
+        const overallConfidence = computeOverallConfidence(
+          analysis.chain, analysis.liens, analysis.exceptions, sourceType, citations
+        );
+
+        // Step 4: PDF Report
+        send({ type: 'progress', step: 'summary', message: 'Generating ALTA-compliant Title Commitment PDF...' });
+        const reportData = {
+          propertyAddress: address,
+          county: county.name,
+          reportDate: new Date().toLocaleDateString(),
+          parcelId: novaActData?.parcelId,
+          legalDescription: novaActData?.legalDescription,
+          ownershipChain: analysis.chain,
+          liens: analysis.liens,
+          exceptions: analysis.exceptions,
+          summary: analysis.summary,
+          sources: citations,
+          overallConfidence,
+          altaScheduleA: analysis.altaScheduleA,
+          altaScheduleB: analysis.altaScheduleB,
+          reviewStatus: 'pending_review' as const,
+          dataSource: novaActData
+            ? `Browser Agent — County Recorder (${novaActData.source?.includes('simulation') ? 'Demo' : 'Live'}) | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`
+            : `Web Search + AI Analysis | Confidence: ${overallConfidence.level} (${overallConfidence.score}%)`,
+        };
+
+        const pdfBuffer = await generateTitleReportPDF(reportData);
+        const pdfBase64 = pdfBuffer.toString('base64');
+
+        // Persist search + screenshots to Turso DB
+        try {
+          const searchId = await saveSearch(
+            address,
+            county.name,
+            novaActData?.parcelId ?? null,
+            novaActData?.source ?? 'web_search',
+            reportData,
+            collectedScreenshots,
+            userId,
+          );
+
+          // Create a review record for human-in-the-loop
+          try {
+            await createReview(searchId);
+            await notifyReviewRequested(userId, searchId, address);
+          } catch (err) {
+            console.error('[Review] createReview failed:', err);
+          }
+
+          send({ type: 'result', data: { ...reportData, pdfBase64, searchId } });
+        } catch (err: any) {
+          console.error('[Turso] saveSearch failed:', err);
+          // Still send the result even if DB save fails
+          send({ type: 'log', step: 'complete', message: `[DB] Save failed: ${err.message}` });
+          send({ type: 'result', data: { ...reportData, pdfBase64, saveError: err.message } });
+        }
+      } catch (e: any) {
+        console.error('Title search error:', e);
+        send({ type: 'error', message: e.message || 'An unexpected error occurred.' });
+      } finally {
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}

@@ -5,7 +5,7 @@
 
 // ─── Source Provenance ──────────────────────────────────────────────────────
 
-export type DataSourceType = 'nova_act' | 'tavily_search' | 'web_scrape' | 'mock_demo' | 'manual_entry';
+export type DataSourceType = 'nova_act' | 'tavily_search' | 'llmlayer_search' | 'web_scrape' | 'county_records' | 'mock_demo' | 'manual_entry';
 
 export interface SourceCitation {
   /** Unique ID for this source reference */

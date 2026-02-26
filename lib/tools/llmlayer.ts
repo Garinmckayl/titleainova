@@ -1,8 +1,7 @@
 /**
- * LLMLayer Web Search API client.
+ * LLMLayer Web Search + Scraper API client.
  * Replaces Tavily as the web search provider.
  * Docs: https://docs.llmlayer.ai/web-search
- * Endpoint: POST https://api.llmlayer.dev/api/v2/web_search
  */
 
 export interface LLMLayerResult {
@@ -45,14 +44,13 @@ export async function searchLLMLayer(query: string): Promise<LLMLayerResult[]> {
     const data = await res.json();
     const results = data.results || [];
 
-    // Map to standard format compatible with existing record-retrieval code
     return results.map((r: any) => ({
       title: r.title || '',
       link: r.link || '',
       snippet: r.snippet || '',
       date: r.date,
-      content: r.snippet, // Use snippet as content for downstream processing
-      url: r.link || '',   // Alias for compatibility
+      content: r.snippet,
+      url: r.link || '',
     }));
   } catch (error: any) {
     console.error('[LLMLayer] Search error:', error.message || error);
@@ -60,5 +58,40 @@ export async function searchLLMLayer(query: string): Promise<LLMLayerResult[]> {
   }
 }
 
-// Export with Tavily-compatible name for drop-in replacement
+/**
+ * Scrape a URL and return its content as markdown text.
+ * Uses LLMLayer Scraper API with advanced proxy for protected sites.
+ * Cost: $0.001 per format requested.
+ */
+export async function scrapePage(url: string): Promise<string | null> {
+  const apiKey = process.env.LLMLAYER_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch('https://api.llmlayer.dev/api/v2/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown'],
+        main_content_only: true,
+        advanced_proxy: true,
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const text = data.markdown || '';
+    return text.length > 50 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+// Export with compatible name
 export const searchWeb = searchLLMLayer;

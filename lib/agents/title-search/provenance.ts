@@ -57,11 +57,12 @@ export function createCitation(
  * Compute a confidence score based on the data source and available evidence.
  *
  * Scoring rubric:
- *   - nova_act (official county recorder): 80-95
- *   - tavily_search (web search results):  40-70
- *   - web_scrape (direct page scrape):     50-75
- *   - manual_entry (user provided):        60-80
- *   - mock_demo (demonstration data):      0-10
+ *   - nova_act (official county recorder):     80-95
+ *   - county_records (county tax office):      75-90
+ *   - tavily_search / llmlayer_search (web):   40-70
+ *   - web_scrape (direct page scrape):         50-75
+ *   - manual_entry (user provided):            60-80
+ *   - mock_demo (demonstration data):          0-10
  *
  * Bonuses:
  *   +10 if document number present
@@ -88,9 +89,17 @@ export function computeConfidence(
       score = 85;
       factors.push('Official county recorder accessed via browser agent');
       break;
+    case 'county_records':
+      score = 80;
+      factors.push('County tax office records (direct query)');
+      break;
     case 'web_scrape':
       score = 60;
       factors.push('Direct web page scraping');
+      break;
+    case 'llmlayer_search':
+      score = 50;
+      factors.push('Web search result (LLMLayer)');
       break;
     case 'tavily_search':
       score = 50;

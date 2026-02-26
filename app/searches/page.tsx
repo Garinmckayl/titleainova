@@ -87,13 +87,9 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
 
   const handleShare = () => {
     const url = getShareUrl();
-    if (navigator.share) {
-      navigator.share({ title: `Title Report - ${row.address}`, url });
-    } else {
-      navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -594,14 +590,10 @@ export default function SearchesPage() {
                                   e.stopPropagation();
                                   const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.thebigfourai.com';
                                   const url = `${base}/report?id=${row.id}`;
-                                  if (navigator.share) {
-                                    navigator.share({ title: `Title Report - ${row.address}`, url });
-                                  } else {
-                                    navigator.clipboard.writeText(url);
-                                    const btn = e.currentTarget;
-                                    btn.title = 'Copied!';
-                                    setTimeout(() => { btn.title = 'Share report link'; }, 2000);
-                                  }
+                                  navigator.clipboard.writeText(url);
+                                  const btn = e.currentTarget;
+                                  btn.title = 'Copied!';
+                                  setTimeout(() => { btn.title = 'Share report link'; }, 2000);
                                 }}
                                 className="p-2 rounded-lg text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 transition-colors"
                                 title="Share report link"

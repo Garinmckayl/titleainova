@@ -85,7 +85,8 @@ ${context}`,
       ...node,
     }));
   } catch (e) {
-    console.error('Chain of Title Agent failed:', e);
+    console.error('Chain of Title Agent failed:', e instanceof Error ? e.message : e);
+    console.error('Chain of Title Agent stack:', e instanceof Error ? e.stack : '');
     return [];
   }
 }
@@ -124,7 +125,8 @@ ${context}`,
 
     return object.liens;
   } catch (e) {
-    console.error('Lien Detection Agent failed:', e);
+    console.error('Lien Detection Agent failed:', e instanceof Error ? e.message : e);
+    console.error('Lien Detection stack:', e instanceof Error ? e.stack : '');
     return [];
   }
 }
@@ -164,7 +166,8 @@ Be specific and actionable. If chain is clean, note that as Info.`,
 
     return object.exceptions;
   } catch (e) {
-    console.error('Risk Assessment Agent failed:', e);
+    console.error('Risk Assessment Agent failed:', e instanceof Error ? e.message : e);
+    console.error('Risk Assessment stack:', e instanceof Error ? e.stack : '');
     return [];
   }
 }

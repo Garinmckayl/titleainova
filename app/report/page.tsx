@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +45,18 @@ interface ReportData {
 }
 
 export default function ReportPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-[#fefce8] to-white flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
+      </div>
+    }>
+      <ReportPageContent />
+    </Suspense>
+  );
+}
+
+function ReportPageContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
   const [report, setReport] = useState<ReportData | null>(null);

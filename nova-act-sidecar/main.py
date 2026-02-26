@@ -364,8 +364,9 @@ def _get_county_config(county: str, parsed_addr: dict) -> CountyConfig:
         return configs[county]
 
     # Generic fallback for unknown counties
+    from urllib.parse import quote_plus
     return CountyConfig(
-        url=f"https://www.google.com/search?q={county}+recorder+property+search",
+        url=f"https://www.google.com/search?q={quote_plus(county)}+recorder+property+search",
         search_type="fulltext",
         search_prompt=(
             f"Search for property records for '{raw}' in {county}. "
@@ -801,11 +802,11 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
             screenshots_collected.append(payload)
         yield sse(event_type, payload)
 
-    # ── Emit result or fallback ───────────────────────────────
+    # ── Emit result or error (NO fake simulation data) ─────────
     if not result_holder.get("success"):
         error_msg = result_holder.get("error", "timeout or unknown error")
         failed_step = result_holder.get("failed_step", "unknown")
-        logger.warning(f"[{run_id}] Falling back to simulation. Failed at: {failed_step}. Error: {error_msg}")
+        logger.warning(f"[{run_id}] Browser agent failed at: {failed_step}. Error: {error_msg}")
 
         yield sse("error", {
             "step": failed_step,
@@ -818,13 +819,20 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                 "failed_step": failed_step,
             })
 
-        sim = simulate_search(address, county)
-        ownership_chain = sim.ownership_chain
-        liens = sim.liens
-        parcel_id = sim.parcel_id
-        legal_description = sim.legal_description
-        source = f"simulation_fallback (failed at {failed_step})"
+        # Return empty result with error — do NOT generate fake data
+        ownership_chain = []
+        liens = []
+        parcel_id = None
+        legal_description = None
+        source = f"failed (browser agent error at {failed_step})"
         _finish_run(run_id, "failed", error_msg)
+
+        yield sse("result", {
+            "data": None,
+            "error": f"Could not access {county} county records: {error_msg[:200]}",
+            "failed_step": failed_step,
+        })
+        return
     else:
         ownership_chain = result_holder["ownership_chain"]
         liens = result_holder["liens"]

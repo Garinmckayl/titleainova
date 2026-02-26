@@ -7,7 +7,6 @@ import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
 import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
-import { getMockDocs } from '@/lib/agents/title-search/mock';
 import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
 import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested, notifyJobProgress } from '@/lib/notifications';
 import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
@@ -79,34 +78,34 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
     let docs: any[] = [];
     if (novaActData) {
       sourceType = 'nova_act';
-      await updateJob(jobId, { progress_pct: 45, log: `Browser agent extracted ${novaActData?.ownershipChain?.length || 0} deed records.` });
+      await updateJob(jobId, { progress_pct: 45, log: `Browser agent extracted ${novaActData?.ownershipChain?.length || 0} deed records from ${county.name}.` });
       const citation = createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || '');
       citations.push(citation);
       docs = [{ source: 'County Recorder Browser Agent', url: county.recorderUrl || '', text: JSON.stringify(novaActData), type: 'NovaAct', citation }];
     } else {
+      // Try web search as last resort (only if API key is valid)
       const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
-      if (!hasTavily) {
-        sourceType = 'mock_demo';
-        await updateJob(jobId, { log: 'Using demonstration data (no search API keys configured).' });
-        docs = getMockDocs(address, county.name);
-        citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
-      } else {
+      if (hasTavily) {
         sourceType = 'tavily_search';
         try {
           docs = await retrieveCountyRecords(address, county.name);
+          if (docs.length > 0) {
+            for (const d of docs) { if (d.citation) citations.push(d.citation); }
+            await updateJob(jobId, { progress_pct: 45, log: `Found ${docs.length} records from web search for ${county.name}.` });
+          }
         } catch (err: any) {
-          await updateJob(jobId, { log: `Web search failed: ${err.message}. Using demonstration data.` });
+          await updateJob(jobId, { log: `Web search failed: ${err.message}` });
           docs = [];
         }
-        if (docs.length === 0) {
-          sourceType = 'mock_demo';
-          await updateJob(jobId, { log: 'No records found via web search — using demonstration data.' });
-          docs = getMockDocs(address, county.name);
-          citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
-        } else {
-          for (const d of docs) { if (d.citation) citations.push(d.citation); }
-          await updateJob(jobId, { progress_pct: 45, log: `Analyzed ${docs.length} records from web search.` });
-        }
+      }
+
+      // If still no data — fail honestly
+      if (docs.length === 0) {
+        throw new Error(
+          `Could not retrieve real property records for ${address} in ${county.name}. ` +
+          `The browser agent could not access the county recorder database. ` +
+          `This may be a temporary issue — please try again later.`
+        );
       }
     }
 

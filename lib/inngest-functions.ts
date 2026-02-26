@@ -4,7 +4,6 @@ import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords, type RetrievedDocument } from '@/lib/agents/title-search/record-retrieval';
 import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
-import { getMockDocs } from '@/lib/agents/title-search/mock';
 import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
 import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested, notifyJobProgress } from '@/lib/notifications';
 import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
@@ -122,13 +121,13 @@ export const titleSearchJob = inngest.createFunction(
               citations.push(createCitation('nova_act', `${county.name} Official Records`, county.recorderUrl || ''));
               await updateJob(jobId, {
                 progress_pct: 45,
-                log: `Browser agent extracted ${novaActData?.ownershipChain?.length || 0} deed records.`,
+                log: `Browser agent extracted ${novaActData?.ownershipChain?.length || 0} deed records from ${county.name}.`,
               });
             }
           }
         } catch {
           await updateJob(jobId, {
-            log: 'Browser agent unavailable — falling back to web search.',
+            log: `Browser agent could not connect — unable to access ${county.name} recorder.`,
           });
         }
       }
@@ -148,40 +147,31 @@ export const titleSearchJob = inngest.createFunction(
         };
       }
 
-      // Fallback: web search or mock data
+      // No real data available — fail honestly instead of using fake data
       const hasTavily = process.env.TAVILY_API_KEY && !process.env.TAVILY_API_KEY.startsWith('your_');
-      let docs: any[];
-
-      if (!hasTavily) {
-        sourceType = 'mock_demo';
-        await updateJob(jobId, { log: 'Using demonstration data (no search API keys configured).' });
-        docs = getMockDocs(address, county.name);
-        citations.push(createCitation('mock_demo', 'Demonstration Data', 'http://mock-registry.gov/'));
-      } else {
+      if (hasTavily) {
         sourceType = 'tavily_search';
         try {
-          docs = await retrieveCountyRecords(address, county.name);
+          const docs = await retrieveCountyRecords(address, county.name);
+          if (docs.length > 0) {
+            for (const d of docs) { if (d.citation) citations.push(d.citation); }
+            await updateJob(jobId, {
+              progress_pct: 45,
+              log: `Found ${docs.length} property records via web search for ${county.name}.`,
+            });
+            return { novaActData: null, screenshots, sourceType, citations, docs };
+          }
         } catch (err: any) {
-          await updateJob(jobId, { log: `Web search failed: ${err.message}. Using demonstration data.` });
-          docs = getMockDocs(address, county.name);
-          sourceType = 'mock_demo';
-          citations.push(createCitation('mock_demo', 'Demonstration Data (web search fallback)', 'http://mock-registry.gov/'));
-        }
-        if (docs.length === 0) {
-          await updateJob(jobId, { log: 'No records found via web search. Using demonstration data.' });
-          docs = getMockDocs(address, county.name);
-          sourceType = 'mock_demo';
-          citations.push(createCitation('mock_demo', 'Demonstration Data (no results)', 'http://mock-registry.gov/'));
-        } else {
-          for (const d of docs) { if (d.citation) citations.push(d.citation); }
-          await updateJob(jobId, {
-            progress_pct: 45,
-            log: `Analyzed ${docs.length} property records from web search.`,
-          });
+          await updateJob(jobId, { log: `Web search also failed: ${err.message}` });
         }
       }
 
-      return { novaActData: null, screenshots, sourceType, citations, docs };
+      // Nothing worked — throw to trigger job failure
+      throw new Error(
+        `Could not retrieve real property records for ${address} in ${county.name}. ` +
+        `The browser agent could not access the county recorder database. ` +
+        `This may be a temporary issue — please try again later.`
+      );
     });
 
     // ── Step 3-5: Enhanced Analysis Pipeline ──────────────────────

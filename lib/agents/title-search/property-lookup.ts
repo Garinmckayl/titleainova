@@ -22,6 +22,20 @@ const COUNTY_DB: CountyRecord[] = [
   { name: 'Fort Bend County', state: 'TX', recorderUrl: 'https://www.fortbendcountytx.gov/', searchUrl: 'http://ccweb.co.fort-bend.tx.us/RealEstate/SearchEntry.aspx' },
   { name: 'Montgomery County TX', state: 'TX', recorderUrl: 'https://www.mctx.org/', searchUrl: 'https://montgomery.tx.publicsearch.us/' },
   { name: 'Williamson County', state: 'TX', recorderUrl: 'https://www.wilco.org/', searchUrl: 'https://williamsoncountytx-web.tylerhost.net/williamsonweb/' },
+  { name: 'Webb County', state: 'TX', recorderUrl: 'https://www.webbcountytx.gov/CountyClerk/', searchUrl: 'https://www.webbcountytx.gov/CountyClerk/RecordSearch/' },
+  { name: 'El Paso County TX', state: 'TX', recorderUrl: 'https://www.epcounty.com/clerk/', searchUrl: 'https://apps.epcounty.com/CountyClerk/RealPropertyRecords.aspx' },
+  { name: 'Hidalgo County', state: 'TX', recorderUrl: 'https://www.co.hidalgo.tx.us/194/County-Clerk', searchUrl: 'https://www.co.hidalgo.tx.us/194/County-Clerk' },
+  { name: 'Cameron County', state: 'TX', recorderUrl: 'https://www.cameroncounty.us/county-clerk/', searchUrl: 'https://www.cameroncounty.us/county-clerk/' },
+  { name: 'Nueces County', state: 'TX', recorderUrl: 'https://www.nuecesco.com/county-services/county-clerk', searchUrl: 'https://www.nuecesco.com/county-services/county-clerk' },
+  { name: 'Lubbock County', state: 'TX', recorderUrl: 'https://www.co.lubbock.tx.us/department/division.php?fDD=10-0', searchUrl: 'https://www.co.lubbock.tx.us/department/division.php?fDD=10-0' },
+  { name: 'McLennan County', state: 'TX', recorderUrl: 'https://www.co.mclennan.tx.us/169/County-Clerk', searchUrl: 'https://www.co.mclennan.tx.us/169/County-Clerk' },
+  { name: 'Brazoria County', state: 'TX', recorderUrl: 'https://www.brazoriacountyclerk.com/', searchUrl: 'https://www.brazoriacountyclerk.com/' },
+  { name: 'Galveston County', state: 'TX', recorderUrl: 'https://www.galvestoncountytx.gov/county-clerk', searchUrl: 'https://www.galvestoncountytx.gov/county-clerk' },
+  { name: 'Hays County', state: 'TX', recorderUrl: 'https://www.co.hays.tx.us/county-clerk', searchUrl: 'https://www.co.hays.tx.us/county-clerk' },
+  { name: 'Bell County', state: 'TX', recorderUrl: 'https://www.bellcounty.texas.gov/county-clerk/', searchUrl: 'https://www.bellcounty.texas.gov/county-clerk/' },
+  { name: 'Smith County', state: 'TX', recorderUrl: 'https://www.smith-county.com/government/departments/county-clerk', searchUrl: 'https://www.smith-county.com/government/departments/county-clerk' },
+  { name: 'Jefferson County TX', state: 'TX', recorderUrl: 'https://www.co.jefferson.tx.us/county_clerk/', searchUrl: 'https://www.co.jefferson.tx.us/county_clerk/' },
+  { name: 'Brazos County', state: 'TX', recorderUrl: 'https://www.brazoscountytx.gov/125/County-Clerk', searchUrl: 'https://www.brazoscountytx.gov/125/County-Clerk' },
   // ─── CALIFORNIA ───
   { name: 'Los Angeles County', state: 'CA', recorderUrl: 'https://rrcc.lacounty.gov/', searchUrl: 'https://rrcc.lacounty.gov/landrecords/' },
   { name: 'San Diego County', state: 'CA', recorderUrl: 'https://arcc.sandiegocounty.gov/', searchUrl: 'https://arcc.sdcounty.ca.gov/Pages/OfficialRecords.aspx' },
@@ -127,6 +141,23 @@ const CITY_TO_COUNTY: Record<string, string> = {
   plano: 'Collin County',          frisco: 'Collin County',
   mckinney: 'Collin County',       allen: 'Collin County',
   denton: 'Denton County',         lewisville: 'Denton County',
+  laredo: 'Webb County',
+  'el paso': 'El Paso County TX',
+  mcallen: 'Hidalgo County',       edinburg: 'Hidalgo County',
+  'mission': 'Hidalgo County',     pharr: 'Hidalgo County',
+  brownsville: 'Cameron County',   harlingen: 'Cameron County',
+  'corpus christi': 'Nueces County',
+  lubbock: 'Lubbock County',
+  waco: 'McLennan County',
+  pearland: 'Brazoria County',     'lake jackson': 'Brazoria County',
+  galveston: 'Galveston County',   'texas city': 'Galveston County',
+  'san marcos': 'Hays County',     kyle: 'Hays County',
+  killeen: 'Bell County',          temple: 'Bell County',
+  tyler: 'Smith County',
+  beaumont: 'Jefferson County TX', 'port arthur': 'Jefferson County TX',
+  'college station': 'Brazos County', bryan: 'Brazos County',
+  'sugar land': 'Fort Bend County', 'missouri city': 'Fort Bend County',
+  conroe: 'Montgomery County TX',  'the woodlands': 'Montgomery County TX',
   // California
   'los angeles': 'Los Angeles County', la: 'Los Angeles County',
   'san diego': 'San Diego County',     anaheim: 'Orange County',
@@ -209,9 +240,9 @@ function normalize(s: string): string {
 
 /**
  * Look up the county for a given address string.
- * Checks both county names and city names embedded in the address.
+ * Checks city names, county names, then tries US Census geocoder as fallback.
  */
-export function lookupCounty(address: string): CountyRecord | null {
+export async function lookupCounty(address: string): Promise<CountyRecord | null> {
   const addr = normalize(address);
 
   // 1. Direct county name match (e.g. "Harris County" in address)
@@ -221,7 +252,7 @@ export function lookupCounty(address: string): CountyRecord | null {
     }
   }
 
-  // 2. State abbreviation + city matching (e.g. "Dallas, TX")
+  // 2. City matching (e.g. "Laredo" -> Webb County)
   for (const [city, countyName] of Object.entries(CITY_TO_COUNTY)) {
     if (addr.includes(city.toLowerCase())) {
       const found = ALL_COUNTIES.find(r => r.name === countyName);
@@ -229,13 +260,49 @@ export function lookupCounty(address: string): CountyRecord | null {
     }
   }
 
-  // 3. Fuzzy: check two-letter state code against major metro areas
-  const stateMatch = addr.match(/\b([a-z]{2})\b\s*\d{5}/);
+  // 3. Try US Census geocoder to resolve address to county (free, no API key)
+  try {
+    const encoded = encodeURIComponent(address);
+    const geocodeUrl = `https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=${encoded}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
+    const res = await fetch(geocodeUrl, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const data = await res.json();
+      const match = data?.result?.addressMatches?.[0];
+      const countyName = match?.geographies?.Counties?.[0]?.BASENAME;
+      const stateName = match?.addressComponents?.state;
+      if (countyName && stateName) {
+        const fullCountyName = `${countyName} County`;
+        // Try to find in our DB
+        const found = ALL_COUNTIES.find(r =>
+          r.name.toLowerCase().includes(countyName.toLowerCase()) && r.state === stateName
+        );
+        if (found) return found;
+        // County identified but not in our DB — return a basic record
+        return {
+          name: fullCountyName,
+          state: stateName,
+          recorderUrl: '',
+          searchUrl: '',
+        };
+      }
+    }
+  } catch {
+    // Geocoder unavailable — continue to zip code fallback
+  }
+
+  // 4. ZIP code → state fallback — but ONLY return a county if we can be specific
+  // DO NOT guess a random county. Return a generic record with just the state.
+  const stateMatch = addr.match(/\b([a-z]{2})\b\s*(\d{5})/);
   if (stateMatch) {
     const state = stateMatch[1].toUpperCase();
-    // Return the most populous county for that state as a best-effort
-    const fallback = ALL_COUNTIES.find(r => r.state === state);
-    if (fallback) return fallback;
+    const zip = stateMatch[2];
+    // Use zip code prefix for rough region (not county-specific)
+    return {
+      name: `Unknown County (ZIP ${zip})`,
+      state,
+      recorderUrl: '',
+      searchUrl: '',
+    };
   }
 
   return null;

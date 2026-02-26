@@ -24,6 +24,10 @@ import {
   Trash2,
   Send,
   BellRing,
+  Inbox,
+  Clock,
+  FileText,
+  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -100,6 +104,10 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* ── State: inbox ──────────────────────────────────────────── */
+  const [inbox, setInbox] = useState<Array<{ id: number; event: string; payload: any; status: string; created_at: string }>>([]);
+  const [inboxLoading, setInboxLoading] = useState(true);
+
   /* ── State: add form ───────────────────────────────────────── */
   const [channel, setChannel] = useState<Channel>("webhook");
   const [event, setEvent] = useState<EventType>("job_completed");
@@ -124,8 +132,24 @@ export default function NotificationsPage() {
     }
   };
 
+  /* ── Fetch inbox ───────────────────────────────────────────── */
+  const fetchInbox = async () => {
+    try {
+      const res = await fetch("/api/notifications?inbox=true&limit=20");
+      const json = await res.json();
+      if (json.success) {
+        setInbox(json.data);
+      }
+    } catch {
+      // Silent fail for inbox
+    }
+  };
+
   useEffect(() => {
-    fetchConfigs().finally(() => setLoading(false));
+    Promise.all([fetchConfigs(), fetchInbox()]).finally(() => {
+      setLoading(false);
+      setInboxLoading(false);
+    });
   }, []);
 
   /* ── Submit new config ─────────────────────────────────────── */
@@ -195,10 +219,88 @@ export default function NotificationsPage() {
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Notifications</h1>
               <p className="text-slate-500 mt-1">
-                Configure alerts for job completions, failures, and review events
+                In-app notifications are enabled by default. Add webhooks or email alerts for additional channels.
               </p>
             </div>
           </div>
+        </div>
+
+        {/* ── Section 0: Recent Notifications (Inbox) ──────────── */}
+        <div className="mb-12">
+          <div className="flex items-center gap-2 mb-6">
+            <Inbox className="h-5 w-5 text-yellow-600" />
+            <h2 className="text-xl font-bold text-slate-900">Recent Notifications</h2>
+            {inbox.length > 0 && (
+              <Badge variant="outline" className="ml-2 bg-yellow-50 text-yellow-700 border-yellow-200 text-xs">
+                {inbox.length}
+              </Badge>
+            )}
+          </div>
+
+          {inboxLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
+            </div>
+          )}
+
+          {!inboxLoading && inbox.length === 0 && (
+            <Card className="border-0 shadow-md bg-white">
+              <CardContent className="py-8">
+                <div className="text-center">
+                  <Inbox className="h-10 w-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-400 mb-1">No notifications yet</p>
+                  <p className="text-xs text-slate-400">
+                    Notifications are enabled by default. You&apos;ll see updates here when searches complete, fail, or need review.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!inboxLoading && inbox.length > 0 && (
+            <div className="space-y-2">
+              {inbox.map((notif) => {
+                const eventIcons: Record<string, React.ReactNode> = {
+                  job_completed: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+                  job_failed: <XCircle className="h-4 w-4 text-red-500" />,
+                  review_requested: <FileText className="h-4 w-4 text-blue-500" />,
+                  review_completed: <CheckCircle2 className="h-4 w-4 text-purple-500" />,
+                };
+                const eventColors: Record<string, string> = {
+                  job_completed: "border-l-green-400",
+                  job_failed: "border-l-red-400",
+                  review_requested: "border-l-blue-400",
+                  review_completed: "border-l-purple-400",
+                };
+                return (
+                  <Card key={notif.id} className={cn("border-0 shadow-sm bg-white overflow-hidden border-l-4", eventColors[notif.event] || "border-l-slate-300")}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5">
+                          {eventIcons[notif.event] || <Bell className="h-4 w-4 text-slate-400" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-900 text-sm">{notif.payload?.title || eventLabel(notif.event as EventType)}</p>
+                          {notif.payload?.message && (
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notif.payload.message}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400 shrink-0">
+                          <Clock className="h-3 w-3" />
+                          {new Date(notif.created_at).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* ── Section 1: Active Subscriptions ──────────────────── */}

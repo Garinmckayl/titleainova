@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Building2, Menu, X, Bell } from "lucide-react";
@@ -39,6 +39,27 @@ const ClerkMobileSignIn = dynamic(
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch unread notification count
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications?unread=true');
+      const json = await res.json();
+      if (json.success) {
+        setUnreadCount(json.count || 0);
+      }
+    } catch {
+      // Silently fail - non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUnread();
+    // Poll every 30 seconds for new notifications
+    const interval = setInterval(fetchUnread, 30000);
+    return () => clearInterval(interval);
+  }, [fetchUnread]);
 
   return (
     <nav className="sticky top-0 z-50 bg-[#fefce8]/80 backdrop-blur-md border-b border-yellow-200/50">
@@ -81,7 +102,7 @@ export function Navbar() {
               variant="ghost"
               size="sm"
               className={cn(
-                "text-sm gap-1.5",
+                "text-sm gap-1.5 relative",
                 pathname === "/notifications"
                   ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
                   : "text-slate-500 hover:text-slate-900"
@@ -89,6 +110,11 @@ export function Navbar() {
             >
               <Bell className="w-4 h-4" />
               <span className="hidden lg:inline">Alerts</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </Button>
           </Link>
           <div className="w-px h-6 bg-slate-200 mx-1" />
@@ -97,6 +123,14 @@ export function Navbar() {
 
         {/* Mobile: profile + hamburger */}
         <div className="flex md:hidden items-center gap-2">
+          <Link href="/notifications" className="relative p-2">
+            <Bell className="w-5 h-5 text-slate-500" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </Link>
           <ClerkMobileUser />
           <button
             className="p-2 rounded-lg hover:bg-yellow-100 transition-colors"
@@ -123,6 +157,11 @@ export function Navbar() {
                   )}
                 >
                   {link.label}
+                  {link.href === "/notifications" && unreadCount > 0 && (
+                    <span className="ml-2 inline-flex min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold items-center justify-center px-1">
+                      {unreadCount}
+                    </span>
+                  )}
                 </div>
               </Link>
             );

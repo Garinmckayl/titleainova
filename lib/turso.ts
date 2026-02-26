@@ -506,3 +506,76 @@ export async function logNotification(
     args: [userId, event, channel, JSON.stringify(payload), status, error ?? null],
   });
 }
+
+/**
+ * Ensure default in_app notification configs exist for a user.
+ * Creates configs for all event types if none exist yet.
+ */
+export async function ensureDefaultNotificationConfigs(userId: string): Promise<void> {
+  await ensureNotificationsTable();
+  const db = getClient();
+
+  // Check if user already has any in_app configs
+  const existing = await db.execute({
+    sql: `SELECT COUNT(*) as cnt FROM notification_configs WHERE user_id = ? AND channel = 'in_app'`,
+    args: [userId],
+  });
+
+  const count = (existing.rows[0]?.cnt as number) || 0;
+  if (count > 0) return; // Already has configs
+
+  // Create default in_app configs for all events
+  const events = ['job_completed', 'job_failed', 'review_requested', 'review_completed'];
+  for (const event of events) {
+    await db.execute({
+      sql: `INSERT INTO notification_configs (user_id, channel, event, enabled)
+            VALUES (?, 'in_app', ?, 1)`,
+      args: [userId, event],
+    });
+  }
+}
+
+/**
+ * Get recent in-app notifications for a user.
+ */
+export async function getInAppNotifications(
+  userId: string,
+  limit: number = 20
+): Promise<Array<{ id: number; event: string; payload: any; status: string; created_at: string }>> {
+  await ensureNotificationsTable();
+  const db = getClient();
+  const rs = await db.execute({
+    sql: `SELECT id, event, payload, status, created_at
+          FROM notification_log
+          WHERE (user_id = ? OR user_id IS NULL) AND channel = 'in_app'
+          ORDER BY created_at DESC
+          LIMIT ?`,
+    args: [userId, limit],
+  });
+  return rs.rows.map(r => ({
+    id: r.id as number,
+    event: r.event as string,
+    payload: parseJson(r.payload, {}),
+    status: r.status as string,
+    created_at: String(r.created_at),
+  }));
+}
+
+/**
+ * Get count of in-app notifications since a given timestamp.
+ */
+export async function getUnreadNotificationCount(
+  userId: string,
+  since?: string
+): Promise<number> {
+  await ensureNotificationsTable();
+  const db = getClient();
+  const sinceDate = since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const rs = await db.execute({
+    sql: `SELECT COUNT(*) as cnt
+          FROM notification_log
+          WHERE (user_id = ? OR user_id IS NULL) AND channel = 'in_app' AND created_at > ?`,
+    args: [userId, sinceDate],
+  });
+  return (rs.rows[0]?.cnt as number) || 0;
+}

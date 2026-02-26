@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Building2, MapPin, ArrowRight, Clock, FileText, AlertTriangle,
-  CheckCircle2, Loader2, History, ChevronDown, ShieldCheck, Camera, X
+  CheckCircle2, Loader2, History, ChevronDown, ShieldCheck, Camera, X,
+  Share2, Link2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -77,6 +78,16 @@ function SourceBadge({ source }: { source: string | null }) {
 
 /* ─── Detail view for a single search ────────────────────────── */
 function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void }) {
+  const handleShare = () => {
+    const url = `${window.location.origin}/report?id=${row.id}`;
+    if (navigator.share) {
+      navigator.share({ title: `Title Report - ${row.address}`, url });
+    } else {
+      navigator.clipboard.writeText(url);
+      alert('Report link copied to clipboard!');
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -102,9 +113,15 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
             </div>
           </div>
         </div>
-        <Button onClick={onClose} variant="outline" size="sm" className="gap-1.5">
-          <X className="h-3.5 w-3.5" /> Back
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleShare} variant="outline" size="sm" className="gap-1.5 text-yellow-700 border-yellow-200 hover:bg-yellow-50">
+            <Share2 className="h-3.5 w-3.5" />
+            Share Report
+          </Button>
+          <Button onClick={onClose} variant="outline" size="sm" className="gap-1.5">
+            <X className="h-3.5 w-3.5" /> Back
+          </Button>
+        </div>
       </div>
 
       {/* Browser Screenshots */}
@@ -563,6 +580,23 @@ export default function SearchesPage() {
                                   </div>
                                 </div>
                               </div>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = `${window.location.origin}/report?id=${row.id}`;
+                                  if (navigator.share) {
+                                    navigator.share({ title: `Title Report - ${row.address}`, url });
+                                  } else {
+                                    navigator.clipboard.writeText(url);
+                                    alert('Report link copied!');
+                                  }
+                                }}
+                                className="p-2 rounded-lg text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 transition-colors"
+                                title="Share report link"
+                              >
+                                <Share2 className="h-4 w-4" />
+                              </button>
 
                               <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all" />
                             </div>

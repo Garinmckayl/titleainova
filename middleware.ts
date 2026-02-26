@@ -2,12 +2,14 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Public routes: landing page, sign-in, sign-up, Inngest webhook
+// Public routes: landing page, sign-in, sign-up, Inngest webhook, shared reports
 const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/inngest(.*)',
+  '/report(.*)',
+  '/api/report(.*)',
 ]);
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;

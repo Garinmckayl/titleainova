@@ -220,3 +220,31 @@ export async function notifyReviewCompleted(
     metadata: { address, decision },
   });
 }
+
+/** Notify about job progress milestones */
+export async function notifyJobProgress(
+  userId: string | null,
+  jobId: string,
+  address: string,
+  step: string,
+  progressPct: number
+): Promise<void> {
+  const stepLabels: Record<string, string> = {
+    lookup: 'County identified',
+    retrieval: 'Pulling records from county database',
+    chain: 'Tracing ownership chain',
+    liens: 'Checking for liens and encumbrances',
+    risk: 'Assessing title risk',
+    summary: 'Building your report',
+  };
+  const label = stepLabels[step] || step;
+
+  await sendNotifications(userId, {
+    event: 'job_progress',
+    resourceId: jobId,
+    title: `Search in progress: ${address}`,
+    message: `${label} (${progressPct}% complete)`,
+    url: `/jobs?id=${jobId}`,
+    metadata: { address, step, progressPct },
+  });
+}

@@ -6,7 +6,7 @@ import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
 import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
-import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested } from '@/lib/notifications';
+import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested, notifyJobProgress } from '@/lib/notifications';
 import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
 
 /**
@@ -47,6 +47,9 @@ export const titleSearchJob = inngest.createFunction(
         progress_pct: 20,
         log: `Property located in ${resolved.name}, ${resolved.state}.`,
       });
+
+      // Notify user about progress
+      await notifyJobProgress(userId ?? null, jobId, address, 'lookup', 20);
 
       return resolved;
     });
@@ -188,6 +191,9 @@ export const titleSearchJob = inngest.createFunction(
         progress_pct: 55,
         log: 'Running analysis pipeline with provenance tracking...',
       });
+
+      // Notify user about analysis progress
+      await notifyJobProgress(userId ?? null, jobId, address, 'chain', 55);
 
       return runAnalysisPipeline(
         retrieval.docs as RetrievedDocument[],

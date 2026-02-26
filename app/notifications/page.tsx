@@ -39,6 +39,7 @@ type Channel = "webhook" | "email" | "in_app";
 type EventType =
   | "job_completed"
   | "job_failed"
+  | "job_progress"
   | "review_requested"
   | "review_completed";
 
@@ -59,8 +60,9 @@ const CHANNELS: { value: Channel; label: string; icon: React.ReactNode; color: s
 ];
 
 const EVENT_TYPES: { value: EventType; label: string }[] = [
-  { value: "job_completed", label: "Job Completed" },
-  { value: "job_failed", label: "Job Failed" },
+  { value: "job_completed", label: "Search Completed" },
+  { value: "job_failed", label: "Search Failed" },
+  { value: "job_progress", label: "Search Progress" },
   { value: "review_requested", label: "Review Requested" },
   { value: "review_completed", label: "Review Completed" },
 ];
@@ -263,12 +265,14 @@ export default function NotificationsPage() {
                 const eventIcons: Record<string, React.ReactNode> = {
                   job_completed: <CheckCircle2 className="h-4 w-4 text-green-500" />,
                   job_failed: <XCircle className="h-4 w-4 text-red-500" />,
+                  job_progress: <Loader2 className="h-4 w-4 text-yellow-500" />,
                   review_requested: <FileText className="h-4 w-4 text-blue-500" />,
                   review_completed: <CheckCircle2 className="h-4 w-4 text-purple-500" />,
                 };
                 const eventColors: Record<string, string> = {
                   job_completed: "border-l-green-400",
                   job_failed: "border-l-red-400",
+                  job_progress: "border-l-yellow-400",
                   review_requested: "border-l-blue-400",
                   review_completed: "border-l-purple-400",
                 };

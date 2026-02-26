@@ -9,7 +9,7 @@ import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
 import { generateTitleReportPDF } from '@/lib/title-report-generator';
 import { getMockDocs } from '@/lib/agents/title-search/mock';
 import { createCitation, computeOverallConfidence } from '@/lib/agents/title-search/provenance';
-import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested } from '@/lib/notifications';
+import { notifyJobCompleted, notifyJobFailed, notifyReviewRequested, notifyJobProgress } from '@/lib/notifications';
 import type { DataSourceType, SourceCitation } from '@/lib/agents/title-search/types';
 
 export const runtime = 'nodejs';
@@ -26,6 +26,7 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
     const c = await lookupCounty(address);
     const county = c ?? { name: 'Unknown County', state: 'US', recorderUrl: '', searchUrl: '' };
     await updateJob(jobId, { progress_pct: 20, log: `Property located in ${county.name}, ${county.state}.` });
+    await notifyJobProgress(userId, jobId, address, 'lookup', 20);
 
     // Step 2: Retrieval
     await updateJob(jobId, { current_step: 'retrieval', progress_pct: 30, log: `Retrieving records for ${county.name}...` });
@@ -111,6 +112,7 @@ async function runDirectSearch(jobId: string, address: string, userId: string | 
 
     // Step 3-5: Enhanced analysis pipeline
     await updateJob(jobId, { current_step: 'chain', progress_pct: 55, log: 'Running analysis pipeline with provenance tracking...' });
+    await notifyJobProgress(userId, jobId, address, 'chain', 55);
 
     const analysis = await runAnalysisPipeline(docs, address, county.name, sourceType, {
       parcelId: novaActData?.parcelId,

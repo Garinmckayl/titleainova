@@ -183,7 +183,7 @@ export interface TitleReportData {
 // ─── Notification Types ─────────────────────────────────────────────────────
 
 export type NotificationChannel = 'email' | 'webhook' | 'in_app';
-export type NotificationEvent = 'job_completed' | 'job_failed' | 'review_requested' | 'review_completed';
+export type NotificationEvent = 'job_completed' | 'job_failed' | 'job_progress' | 'review_requested' | 'review_completed';
 
 export interface NotificationConfig {
   userId: string;

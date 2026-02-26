@@ -23,7 +23,7 @@ import type { NotificationChannel, NotificationEvent } from '@/lib/agents/title-
 export const runtime = 'nodejs';
 
 const VALID_CHANNELS: NotificationChannel[] = ['email', 'webhook', 'in_app'];
-const VALID_EVENTS: NotificationEvent[] = ['job_completed', 'job_failed', 'review_requested', 'review_completed'];
+const VALID_EVENTS: NotificationEvent[] = ['job_completed', 'job_failed', 'job_progress', 'review_requested', 'review_completed'];
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();

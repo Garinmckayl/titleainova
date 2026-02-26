@@ -525,7 +525,7 @@ export async function ensureDefaultNotificationConfigs(userId: string): Promise<
   if (count > 0) return; // Already has configs
 
   // Create default in_app configs for all events
-  const events = ['job_completed', 'job_failed', 'review_requested', 'review_completed'];
+  const events = ['job_completed', 'job_failed', 'job_progress', 'review_requested', 'review_completed'];
   for (const event of events) {
     await db.execute({
       sql: `INSERT INTO notification_configs (user_id, channel, event, enabled)

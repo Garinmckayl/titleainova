@@ -358,6 +358,27 @@ def _get_county_config(county: str, parsed_addr: dict) -> CountyConfig:
                 f"related to '{street_name}'."
             ),
         ),
+        "Webb County": CountyConfig(
+            url="https://countyfusion5.kofiletech.us/countyweb/login.do?countyname=WebbTX",
+            search_type="fulltext",
+            search_prompt=(
+                f"This is the Webb County TX public records portal. "
+                f"If there is a login or guest access button, click 'Login as Guest' or 'Public Access' or similar. "
+                f"Then look for a search option — search by name, address, or document type. "
+                f"Search for property records related to '{raw}'. "
+                f"Try the address '{street}' or the name on the deed. "
+                f"If there is a date range, set it to cover the last 20 years. "
+                f"Click Search."
+            ),
+            deed_nav_prompt=(
+                f"In the results, click on any Warranty Deed, Deed of Trust, or Grant Deed "
+                f"related to '{street}' or '{street_name}'."
+            ),
+            lien_search_prompt=(
+                f"Search for Tax Lien, Judgment, or Mechanic's Lien records "
+                f"related to '{street_name}' in Webb County."
+            ),
+        ),
     }
 
     if county in configs:

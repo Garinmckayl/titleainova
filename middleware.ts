@@ -3,10 +3,14 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Public routes: landing page, sign-in, sign-up, Inngest webhook, shared reports
+// /titleai and /api/titleai are public so judges and guests can run searches without signing in
 const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
+  '/titleai(.*)',
+  '/api/titleai(.*)',
+  '/api/nova-act(.*)',
   '/api/inngest(.*)',
   '/report(.*)',
   '/api/report(.*)',

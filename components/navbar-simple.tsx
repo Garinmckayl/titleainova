@@ -66,10 +66,7 @@ export function Navbar() {
       <div className="container mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-yellow-500 flex items-center justify-center shadow-sm">
-            <Building2 className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold text-slate-900 hidden sm:block">Title AI</span>
+          <img src="/logo.svg" alt="Title AI" className="h-8 w-auto" />
         </Link>
 
         {/* Desktop Nav */}

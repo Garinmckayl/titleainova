@@ -303,7 +303,7 @@ export function TitleSearchClient() {
         </motion.div>
       )}
 
-      {/* AgentCore live browser — live iframe stream + screenshots */}
+      {/* AgentCore live browser — always-on iframe + screenshot thumbnails */}
       {liveViewUrl && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -326,51 +326,63 @@ export function TitleSearchClient() {
             </a>
             <span className="text-slate-600 text-xs font-mono">bedrock-agentcore</span>
           </div>
-          {activeScreenshot ? (
-            <div className="bg-slate-950 p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`data:image/jpeg;base64,${activeScreenshot.data}`}
-                alt={activeScreenshot.label}
-                className="w-full rounded-lg border border-slate-700 max-h-[480px] object-contain object-top"
-              />
-              <div className="flex items-center gap-2 mt-2 px-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                <span className="text-slate-400 text-xs font-mono">{activeScreenshot.label}</span>
-                {screenshots.length > 1 && (
-                  <div className="ml-auto flex gap-1">
-                    {screenshots.map((s, i) => (
-                      <button
-                        key={s.id}
-                        onClick={() => setActiveScreenshot(s)}
-                        className={cn(
-                          "w-6 h-6 rounded text-xs font-mono transition",
-                          activeScreenshot.id === s.id
-                            ? "bg-yellow-500 text-slate-900"
-                            : "bg-slate-700 text-slate-400 hover:bg-slate-600"
-                        )}
-                      >
-                        {i + 1}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+
+          {/* Live iframe — always visible for the entire session */}
+          <div className="bg-slate-950">
+            <iframe
+              src={liveViewUrl}
+              title="AgentCore Live Browser"
+              className="w-full border-0"
+              style={{ height: '480px' }}
+              sandbox="allow-scripts allow-same-origin allow-forms"
+            />
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-800">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-slate-400 text-xs font-mono">Nova Act navigating county recorder portal — live stream</span>
             </div>
-          ) : (
-            /* No screenshots yet — show live iframe stream from AgentCore */
-            <div className="bg-slate-950">
-              <iframe
-                src={liveViewUrl}
-                title="AgentCore Live Browser"
-                className="w-full border-0"
-                style={{ height: '480px' }}
-                sandbox="allow-scripts allow-same-origin allow-forms"
-              />
-              <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-800">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-slate-400 text-xs font-mono">Nova Act navigating county recorder portal — live view</span>
+          </div>
+
+          {/* Screenshot thumbnails strip — shown below the live feed as they arrive */}
+          {screenshots.length > 0 && (
+            <div className="bg-slate-900 border-t border-slate-700 px-3 py-2">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-slate-500 text-xs font-mono uppercase tracking-wider">Captured frames</span>
               </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {screenshots.map((s, i) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveScreenshot(activeScreenshot?.id === s.id ? null : s)}
+                    className={cn(
+                      "flex-shrink-0 rounded border overflow-hidden transition-all",
+                      activeScreenshot?.id === s.id
+                        ? "border-yellow-500 ring-1 ring-yellow-500"
+                        : "border-slate-700 hover:border-slate-500"
+                    )}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`data:image/jpeg;base64,${s.data}`}
+                      alt={s.label}
+                      className="w-32 h-20 object-cover object-top"
+                    />
+                    <div className="px-1.5 py-0.5 bg-slate-800 text-slate-400 text-xs font-mono truncate max-w-[128px]">
+                      {i + 1}. {s.label}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* Expanded screenshot view when a thumbnail is clicked */}
+              {activeScreenshot && (
+                <div className="mt-2 rounded-lg overflow-hidden border border-slate-700">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:image/jpeg;base64,${activeScreenshot.data}`}
+                    alt={activeScreenshot.label}
+                    className="w-full max-h-[320px] object-contain object-top bg-slate-950"
+                  />
+                </div>
+              )}
             </div>
           )}
         </motion.div>

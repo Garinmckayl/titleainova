@@ -540,8 +540,6 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                     starting_page=config.url,
                     cdp_endpoint_url=ws_url,
                     cdp_headers=ws_headers,
-                    logs_directory=run_logs_dir,
-                    record_video=True,
                 ) as nova:
 
                     # Step 1: Search for property (county-specific prompt) ──

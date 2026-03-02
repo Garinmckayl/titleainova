@@ -625,6 +625,11 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                         logger.warning(f"[{run_id}] parcel_extract failed: {e}")
                         # Non-fatal — continue
 
+                    # Screenshot after parcel extract
+                    shot = _take_screenshot(nova, run_id, "Property details")
+                    if shot:
+                        event_queue.put(("screenshot", {"label": "Property details", "step": "chain", "data": shot}))
+
                     # Step 3: Navigate to deed history (county-specific) ───
                     current_step = "deed_navigation"
                     step3 = _timed_step("deed_navigation")
@@ -711,6 +716,9 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                     current_step = "lien_extract"
                     step6 = _timed_step("lien_extract")
                     logger.info(f"[{run_id}] Step: lien_extract")
+                    current_step = "lien_extract"
+                    step6 = _timed_step("lien_extract")
+                    logger.info(f"[{run_id}] Step: lien_extract")
 
                     class LienRecord(BaseModel):
                         type: str = ""
@@ -741,6 +749,11 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                         _end_step(step6, success=False, error=str(e))
                         logger.warning(f"[{run_id}] Lien extraction failed: {e}")
                         # Non-fatal
+
+                    # Final screenshot
+                    shot = _take_screenshot(nova, run_id, "Final page state")
+                    if shot:
+                        event_queue.put(("screenshot", {"label": "Final page state", "step": "risk", "data": shot}))
 
             _run()
 

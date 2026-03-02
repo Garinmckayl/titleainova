@@ -306,8 +306,8 @@ export function TitleSearchClient() {
         </motion.div>
       )}
 
-      {/* AgentCore live browser — screenshots + open-in-tab live link */}
-      {liveViewUrl && (
+      {/* AgentCore browser screenshots */}
+      {(liveViewUrl || screenshots.length > 0) && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -319,18 +319,9 @@ export function TitleSearchClient() {
             <span className="text-slate-400 text-xs font-mono">AgentCore Browser Tool — Live Session</span>
             {screenshots.length > 0 && (
               <span className="ml-2 text-yellow-500 text-xs font-mono">
-                · {screenshots.length} screenshot{screenshots.length > 1 ? 's' : ''} captured
+                · {screenshots.length} frame{screenshots.length > 1 ? 's' : ''} captured
               </span>
             )}
-            <a
-              href={liveViewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-mono transition-colors"
-            >
-              <Monitor className="h-3 w-3" />
-              Watch live ↗
-            </a>
           </div>
 
           {/* Main area: latest screenshot or waiting state */}
@@ -343,46 +334,28 @@ export function TitleSearchClient() {
                   alt={activeScreenshot.label}
                   className="w-full rounded-lg border border-slate-700 max-h-[480px] object-contain object-top"
                 />
+                <div className="flex items-center gap-2 mt-1.5 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="text-slate-400 text-xs font-mono">{activeScreenshot.label}</span>
+                </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-48 gap-4">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 text-green-400 animate-spin" />
-                  <span className="text-slate-400 text-sm font-mono">Nova Act navigating county recorder...</span>
-                </div>
-                <a
-                  href={liveViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm font-mono transition-colors"
-                >
-                  <Monitor className="h-4 w-4 text-green-400" />
-                  Open live browser stream in new tab ↗
-                </a>
+              <div className="flex flex-col items-center justify-center h-40 gap-3">
+                <Loader2 className="h-5 w-5 text-green-400 animate-spin" />
+                <span className="text-slate-400 text-sm font-mono">Nova Act navigating county recorder...</span>
                 <span className="text-slate-600 text-xs font-mono">Screenshots will appear here as the agent works</span>
               </div>
             )}
           </div>
 
-          {/* Screenshot thumbnails strip */}
-          {screenshots.length > 0 && (
+          {/* Thumbnail strip — shown when multiple frames captured */}
+          {screenshots.length > 1 && (
             <div className="bg-slate-900 border-t border-slate-700 px-3 py-2">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-slate-500 text-xs font-mono uppercase tracking-wider">Captured frames</span>
-                <a
-                  href={liveViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="ml-auto text-slate-600 hover:text-slate-400 text-xs font-mono transition-colors"
-                >
-                  watch live ↗
-                </a>
-              </div>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {screenshots.map((s, i) => (
                   <button
                     key={s.id}
-                    onClick={() => setActiveScreenshot(activeScreenshot?.id === s.id ? null : s)}
+                    onClick={() => setActiveScreenshot(s)}
                     className={cn(
                       "flex-shrink-0 rounded border overflow-hidden transition-all",
                       activeScreenshot?.id === s.id
@@ -394,9 +367,9 @@ export function TitleSearchClient() {
                     <img
                       src={`data:image/jpeg;base64,${s.data}`}
                       alt={s.label}
-                      className="w-32 h-20 object-cover object-top"
+                      className="w-28 h-16 object-cover object-top"
                     />
-                    <div className="px-1.5 py-0.5 bg-slate-800 text-slate-400 text-xs font-mono truncate max-w-[128px]">
+                    <div className="px-1.5 py-0.5 bg-slate-800 text-slate-400 text-xs font-mono truncate max-w-[112px]">
                       {i + 1}. {s.label}
                     </div>
                   </button>

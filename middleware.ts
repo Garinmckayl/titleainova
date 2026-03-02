@@ -2,8 +2,6 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Public routes: landing page, sign-in, sign-up, Inngest webhook, shared reports
-// /titleai and /api/titleai are public so judges and guests can run searches without signing in
 const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
@@ -12,6 +10,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/titleai(.*)',
   '/api/nova-act(.*)',
   '/api/inngest(.*)',
+  '/api/searches(.*)',
+  '/searches(.*)',
   '/report(.*)',
   '/api/report(.*)',
 ]);

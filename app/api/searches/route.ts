@@ -5,10 +5,12 @@ import { getRecentSearches, getSearch } from '@/lib/turso';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  // Auth is optional — signed-in users see their own searches, guests see all recent
+  let userId: string | null = null;
+  try {
+    const session = await auth();
+    userId = session.userId;
+  } catch { /* Clerk not configured */ }
 
   const { searchParams } = new URL(req.url);
   const idParam = searchParams.get('id');
@@ -24,7 +26,8 @@ export async function GET(req: NextRequest) {
 
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 20, 50) : 20;
-    const rows = await getRecentSearches(limit, userId);
+    // Pass null userId to get all recent searches (for demo/guest access)
+    const rows = await getRecentSearches(limit, userId ?? undefined);
     return NextResponse.json({ success: true, data: rows });
   } catch (err: any) {
     console.error('[/api/searches]', err);

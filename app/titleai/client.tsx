@@ -49,6 +49,7 @@ export function TitleSearchClient() {
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [activeScreenshot, setActiveScreenshot] = useState<Screenshot | null>(null);
   const [liveViewUrl, setLiveViewUrl] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [result, setResult] = useState<TitleReportData & { pdfBase64: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -78,6 +79,7 @@ export function TitleSearchClient() {
     setScreenshots([]);
     setActiveScreenshot(null);
     setLiveViewUrl(null);
+    setVideoUrl(null);
     setCurrentStep('lookup');
     setProgressMessage('Initializing Title AI agents...');
     setShowTerminal(true);
@@ -123,6 +125,11 @@ export function TitleSearchClient() {
           } else if (evt.type === 'live_view') {
             setLiveViewUrl(evt.url);
             addLog('retrieval', '[AgentCore] Cloud browser live — streaming view available');
+          } else if (evt.type === 'video_ready') {
+            // Session video recording is available
+            const fullVideoUrl = `${process.env.NEXT_PUBLIC_NOVA_ACT_SERVICE_URL || 'http://98.92.77.193:8001'}${evt.url}`;
+            setVideoUrl(fullVideoUrl);
+            addLog('complete', `[Video] Session recording ready: ${evt.url}`);
           } else if (evt.type === 'screenshot') {
             const shot: Screenshot = {
               id: shotIdRef.current++,
@@ -296,8 +303,8 @@ export function TitleSearchClient() {
         </motion.div>
       )}
 
-      {/* AgentCore live browser — placeholder while screenshots load */}
-      {liveViewUrl && !activeScreenshot && (
+      {/* AgentCore live browser — live iframe stream + screenshots */}
+      {liveViewUrl && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -306,12 +313,94 @@ export function TitleSearchClient() {
           <div className="bg-slate-900 px-4 py-2.5 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-slate-400 text-xs font-mono">AgentCore Browser Tool — Live Session</span>
-            <span className="ml-auto text-slate-600 text-xs font-mono">bedrock-agentcore</span>
+            {screenshots.length > 0 && (
+              <span className="ml-2 text-yellow-500 text-xs font-mono">· {screenshots.length} screenshot{screenshots.length > 1 ? 's' : ''} captured</span>
+            )}
+            <a
+              href={liveViewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto text-slate-500 hover:text-slate-300 text-xs font-mono transition-colors"
+            >
+              open live view ↗
+            </a>
+            <span className="text-slate-600 text-xs font-mono">bedrock-agentcore</span>
           </div>
-          <div className="bg-slate-950 flex flex-col items-center justify-center py-16 text-slate-500">
-            <Monitor className="h-12 w-12 mb-4 animate-pulse" />
-            <p className="text-sm font-medium text-slate-400">AI agent is browsing county records...</p>
-            <p className="text-xs mt-1.5 text-slate-600">Live screenshots will appear in the terminal below</p>
+          {activeScreenshot ? (
+            <div className="bg-slate-950 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:image/jpeg;base64,${activeScreenshot.data}`}
+                alt={activeScreenshot.label}
+                className="w-full rounded-lg border border-slate-700 max-h-[480px] object-contain object-top"
+              />
+              <div className="flex items-center gap-2 mt-2 px-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                <span className="text-slate-400 text-xs font-mono">{activeScreenshot.label}</span>
+                {screenshots.length > 1 && (
+                  <div className="ml-auto flex gap-1">
+                    {screenshots.map((s, i) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setActiveScreenshot(s)}
+                        className={cn(
+                          "w-6 h-6 rounded text-xs font-mono transition",
+                          activeScreenshot.id === s.id
+                            ? "bg-yellow-500 text-slate-900"
+                            : "bg-slate-700 text-slate-400 hover:bg-slate-600"
+                        )}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* No screenshots yet — show live iframe stream from AgentCore */
+            <div className="bg-slate-950">
+              <iframe
+                src={liveViewUrl}
+                title="AgentCore Live Browser"
+                className="w-full border-0"
+                style={{ height: '480px' }}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+              />
+              <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-800">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-slate-400 text-xs font-mono">Nova Act navigating county recorder portal — live view</span>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Session video recording player */}
+      {videoUrl && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-6 max-w-4xl mx-auto rounded-2xl overflow-hidden border border-slate-700 shadow-2xl"
+        >
+          <div className="bg-slate-900 px-4 py-2.5 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-purple-400" />
+            <span className="text-slate-400 text-xs font-mono">Nova Act — Session Recording</span>
+            <a
+              href={videoUrl}
+              download
+              className="ml-auto text-slate-500 hover:text-slate-300 text-xs font-mono transition-colors"
+            >
+              download video ↓
+            </a>
+          </div>
+          <div className="bg-slate-950 p-2">
+            <video
+              src={videoUrl}
+              controls
+              autoPlay={false}
+              className="w-full rounded-lg border border-slate-700 max-h-[480px]"
+            />
           </div>
         </motion.div>
       )}
@@ -397,42 +486,7 @@ export function TitleSearchClient() {
                     exit={{ height: 0 }}
                     className="overflow-hidden"
                   >
-                     {/* Live browser screenshot — only shown when real screenshots arrive from browser agent */}
-                      {activeScreenshot && (
-                      <div className="bg-slate-900 border-b border-slate-800 p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                          <span className="text-slate-400 text-xs font-mono">
-                            Browser Agent — {activeScreenshot.label}
-                          </span>
-                          {screenshots.length > 1 && (
-                            <div className="ml-auto flex gap-1">
-                              {screenshots.map((s, i) => (
-                                <button
-                                  key={s.id}
-                                  onClick={() => setActiveScreenshot(s)}
-                                  className={cn(
-                                    "w-6 h-6 rounded text-xs font-mono transition",
-                                    activeScreenshot.id === s.id
-                                      ? "bg-yellow-500 text-slate-900"
-                                      : "bg-slate-700 text-slate-400 hover:bg-slate-600"
-                                  )}
-                                >
-                                  {i + 1}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`data:image/jpeg;base64,${activeScreenshot.data}`}
-                          alt={activeScreenshot.label}
-                          className="w-full rounded-lg border border-slate-700 max-h-64 object-contain object-top"
-                        />
-                      </div>
-                    )}
-
+                     {/* Log stream */}
                     <div className="bg-slate-950 p-4 font-mono text-xs max-h-72 overflow-y-auto space-y-1">
                       {logs.map(log => (
                         <div key={log.id} className="flex gap-3 items-start leading-relaxed">

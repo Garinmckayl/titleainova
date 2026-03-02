@@ -59,6 +59,12 @@ WORKFLOW_DEFINITION_NAME = "title"
 MODEL_ID = "nova-act-latest"
 MAX_STEPS = 50  # Up from 30 — county sites need more navigation
 
+# ─── Video recording directory ───────────────────────────────────────────────
+
+VIDEOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "session_videos")
+os.makedirs(VIDEOS_DIR, exist_ok=True)
+logger.info(f"Session video recording directory: {VIDEOS_DIR}")
+
 # ─── In-memory debug state ───────────────────────────────────────────────────
 
 MAX_DEBUG_ENTRIES = 50
@@ -216,23 +222,21 @@ def _get_county_config(county: str, parsed_addr: dict) -> CountyConfig:
                 f"with document type 'Lien' or 'Tax Lien' if the filter is available."
             ),
         ),
-        "Dallas County": CountyConfig(
+         "Dallas County": CountyConfig(
             url="https://dallas.tx.publicsearch.us/",
             search_type="fulltext",
             search_prompt=(
                 f"This is the Dallas County public search portal (publicsearch.us). "
-                f"There should be a search bar at the top. "
-                f"Type '{street}' into the search bar and press Enter or click Search. "
-                f"This is a full-text search that accepts addresses directly."
+                f"There is a search bar at the top. "
+                f"Click the search box and type ONLY the street name '{street_name}' (do NOT include the house number or city). "
+                f"Press Enter or click the Search button and wait for results."
             ),
             deed_nav_prompt=(
-                f"In the search results, look for documents related to '{street}'. "
-                f"Click on any Warranty Deed or Deed document to see its details. "
-                f"Look for the grantor, grantee, recording date, and document number."
+                f"Look at the search results list. Find the FIRST document that is a "
+                f"Warranty Deed, Grant Deed, or Deed of Trust and click on it to open it."
             ),
             lien_search_prompt=(
-                f"Search for liens by typing '{street_name} lien' in the search bar, "
-                f"or use any filters to narrow to 'Lien' document type."
+                f"Go back to search. Type '{street_name}' and press Enter. Stay on the results page."
             ),
         ),
         "Tarrant County": CountyConfig(
@@ -240,14 +244,13 @@ def _get_county_config(county: str, parsed_addr: dict) -> CountyConfig:
             search_type="fulltext",
             search_prompt=(
                 f"This is the Tarrant County public search portal (publicsearch.us). "
-                f"Type '{street}' into the search bar and press Enter or click Search."
+                f"Type ONLY the street name '{street_name}' (no house number) into the search bar and press Enter."
             ),
             deed_nav_prompt=(
-                f"In the search results, find documents matching '{street}'. "
-                f"Click on any Warranty Deed to see its details."
+                f"Look at the search results. Click the FIRST Warranty Deed, Grant Deed, or Deed of Trust."
             ),
             lien_search_prompt=(
-                f"Search for '{street_name} lien' or filter results by Lien document type."
+                f"Go back to search. Type '{street_name}' and press Enter. Stay on the results page."
             ),
         ),
         "Bexar County": CountyConfig(
@@ -255,13 +258,13 @@ def _get_county_config(county: str, parsed_addr: dict) -> CountyConfig:
             search_type="fulltext",
             search_prompt=(
                 f"This is the Bexar County public search portal (publicsearch.us). "
-                f"Type '{street}' into the search bar and press Enter or click Search."
+                f"Type ONLY the street name '{street_name}' (no house number) into the search bar and press Enter."
             ),
             deed_nav_prompt=(
-                f"Click on any Warranty Deed in the results matching '{street}'."
+                f"Look at the search results. Click the FIRST Warranty Deed or Grant Deed visible."
             ),
             lien_search_prompt=(
-                f"Search for liens: type '{street_name} lien' in the search bar."
+                f"Go back to search. Type '{street_name}' and press Enter. Stay on the results page."
             ),
         ),
         "King County": CountyConfig(
@@ -447,6 +450,7 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
     Real Nova Act via AgentCore Browser Tool — cloud-hosted browser.
     Uses county-specific prompts for accurate form interaction.
     Streams SSE events with detailed error context at every step.
+    Enables session video recording via record_video=True + logs_directory.
     """
     parsed_addr = parse_address(address)
     config = _get_county_config(county, parsed_addr)
@@ -454,6 +458,11 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
     logger.info(f"[{run_id}] County config: url={config.url}, search_type={config.search_type}")
     if config.notes:
         logger.info(f"[{run_id}] Notes: {config.notes}")
+
+    # ── Per-run video logs directory ─────────────────────────────────────────
+    run_logs_dir = os.path.join(VIDEOS_DIR, run_id)
+    os.makedirs(run_logs_dir, exist_ok=True)
+    logger.info(f"[{run_id}] Session logs/video directory: {run_logs_dir}")
 
     result_holder: dict = {}
     live_view_url_holder: List[str] = []
@@ -531,6 +540,8 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                     starting_page=config.url,
                     cdp_endpoint_url=ws_url,
                     cdp_headers=ws_headers,
+                    logs_directory=run_logs_dir,
+                    record_video=True,
                 ) as nova:
 
                     # Step 1: Search for property (county-specific prompt) ──
@@ -624,7 +635,7 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
 
                     deed_nav_succeeded = False
                     try:
-                        nova.act(config.deed_nav_prompt, max_steps=MAX_STEPS)
+                        nova.act(config.deed_nav_prompt, max_steps=15)
                         deed_nav_succeeded = True
                         _end_step(step3)
                     except Exception as e:
@@ -687,7 +698,7 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
                     logger.info(f"[{run_id}] Step: lien_search")
 
                     try:
-                        nova.act(config.lien_search_prompt, max_steps=MAX_STEPS)
+                        nova.act(config.lien_search_prompt, max_steps=15)
                         _end_step(step5)
                     except Exception as e:
                         _end_step(step5, success=False, error=str(e))
@@ -823,6 +834,29 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
             screenshots_collected.append(payload)
         yield sse(event_type, payload)
 
+    # ── Check for recorded session video ──────────────────────
+    video_path: Optional[str] = None
+    try:
+        for root, dirs, files in os.walk(run_logs_dir):
+            for fname in files:
+                if fname.endswith(".webm") or fname.endswith(".mp4"):
+                    video_path = os.path.join(root, fname)
+                    break
+            if video_path:
+                break
+        if video_path:
+            logger.info(f"[{run_id}] Session video recorded: {video_path}")
+            result_holder["video_path"] = video_path
+            yield sse("video_ready", {
+                "url": f"/videos/{run_id}",
+                "path": video_path,
+                "message": "Session video recording available",
+            })
+        else:
+            logger.info(f"[{run_id}] No session video found in {run_logs_dir} (CDP mode may not support record_video)")
+    except Exception as e:
+        logger.warning(f"[{run_id}] Video detection failed: {e}")
+
     # ── Emit result or error (NO fake simulation data) ─────────
     if not result_holder.get("success"):
         error_msg = result_holder.get("error", "timeout or unknown error")
@@ -883,6 +917,7 @@ def _nova_act_stream(address: str, county: str, run_id: str) -> Generator[str, N
             "liens": liens,
             "source": source,
             "screenshots": [{"label": s["label"], "step": s["step"]} for s in screenshots_collected],
+            "videoUrl": f"/videos/{run_id}" if result_holder.get("video_path") else None,
         }
     })
 
@@ -1121,6 +1156,57 @@ def search_stream():
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.route("/videos/<run_id>", methods=["GET"])
+def get_video(run_id: str):
+    """Serve the recorded session video for a given run_id."""
+    from flask import send_file
+    run_logs_dir = os.path.join(VIDEOS_DIR, run_id)
+    if not os.path.isdir(run_logs_dir):
+        return jsonify({"error": "run not found"}), 404
+
+    # Find the first video file (webm or mp4)
+    video_path = None
+    for root, dirs, files in os.walk(run_logs_dir):
+        for fname in sorted(files):
+            if fname.endswith(".webm") or fname.endswith(".mp4"):
+                video_path = os.path.join(root, fname)
+                break
+        if video_path:
+            break
+
+    if not video_path or not os.path.isfile(video_path):
+        return jsonify({"error": "video not found for this run"}), 404
+
+    mime = "video/webm" if video_path.endswith(".webm") else "video/mp4"
+    logger.info(f"Serving video for run {run_id}: {video_path}")
+    return send_file(video_path, mimetype=mime, as_attachment=False)
+
+
+@app.route("/videos", methods=["GET"])
+def list_videos():
+    """List all available session recordings."""
+    videos = []
+    if os.path.isdir(VIDEOS_DIR):
+        for run_id in os.listdir(VIDEOS_DIR):
+            run_dir = os.path.join(VIDEOS_DIR, run_id)
+            if os.path.isdir(run_dir):
+                for root, dirs, files in os.walk(run_dir):
+                    for fname in files:
+                        if fname.endswith(".webm") or fname.endswith(".mp4"):
+                            fpath = os.path.join(root, fname)
+                            videos.append({
+                                "run_id": run_id,
+                                "url": f"/videos/{run_id}",
+                                "filename": fname,
+                                "size_bytes": os.path.getsize(fpath),
+                                "created": datetime.fromtimestamp(
+                                    os.path.getctime(fpath), tz=timezone.utc
+                                ).isoformat(),
+                            })
+    videos.sort(key=lambda v: v["created"], reverse=True)
+    return jsonify({"videos": videos, "count": len(videos)})
 
 
 # ─── Run ──────────────────────────────────────────────────────────────────────

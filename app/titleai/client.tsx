@@ -57,10 +57,13 @@ export function TitleSearchClient() {
   const logIdRef = useRef(0);
   const shotIdRef = useRef(0);
 
-  // Auto-scroll terminal
+  // Auto-scroll terminal — only scroll INSIDE the terminal box, not the page
   useEffect(() => {
-    if (showTerminal) {
-      logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (showTerminal && logEndRef.current) {
+      const container = logEndRef.current.parentElement;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
     }
   }, [logs, showTerminal]);
 
@@ -303,50 +306,77 @@ export function TitleSearchClient() {
         </motion.div>
       )}
 
-      {/* AgentCore live browser — always-on iframe + screenshot thumbnails */}
+      {/* AgentCore live browser — screenshots + open-in-tab live link */}
       {liveViewUrl && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="mt-8 max-w-4xl mx-auto rounded-2xl overflow-hidden border border-slate-700 shadow-2xl"
         >
+          {/* Header bar */}
           <div className="bg-slate-900 px-4 py-2.5 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-slate-400 text-xs font-mono">AgentCore Browser Tool — Live Session</span>
             {screenshots.length > 0 && (
-              <span className="ml-2 text-yellow-500 text-xs font-mono">· {screenshots.length} screenshot{screenshots.length > 1 ? 's' : ''} captured</span>
+              <span className="ml-2 text-yellow-500 text-xs font-mono">
+                · {screenshots.length} screenshot{screenshots.length > 1 ? 's' : ''} captured
+              </span>
             )}
             <a
               href={liveViewUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-auto text-slate-500 hover:text-slate-300 text-xs font-mono transition-colors"
+              className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-mono transition-colors"
             >
-              open live view ↗
+              <Monitor className="h-3 w-3" />
+              Watch live ↗
             </a>
-            <span className="text-slate-600 text-xs font-mono">bedrock-agentcore</span>
           </div>
 
-          {/* Live iframe — always visible for the entire session */}
+          {/* Main area: latest screenshot or waiting state */}
           <div className="bg-slate-950">
-            <iframe
-              src={liveViewUrl}
-              title="AgentCore Live Browser"
-              className="w-full border-0"
-              style={{ height: '480px' }}
-              sandbox="allow-scripts allow-same-origin allow-forms"
-            />
-            <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-800">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-slate-400 text-xs font-mono">Nova Act navigating county recorder portal — live stream</span>
-            </div>
+            {activeScreenshot ? (
+              <div className="p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:image/jpeg;base64,${activeScreenshot.data}`}
+                  alt={activeScreenshot.label}
+                  className="w-full rounded-lg border border-slate-700 max-h-[480px] object-contain object-top"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-48 gap-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 text-green-400 animate-spin" />
+                  <span className="text-slate-400 text-sm font-mono">Nova Act navigating county recorder...</span>
+                </div>
+                <a
+                  href={liveViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm font-mono transition-colors"
+                >
+                  <Monitor className="h-4 w-4 text-green-400" />
+                  Open live browser stream in new tab ↗
+                </a>
+                <span className="text-slate-600 text-xs font-mono">Screenshots will appear here as the agent works</span>
+              </div>
+            )}
           </div>
 
-          {/* Screenshot thumbnails strip — shown below the live feed as they arrive */}
+          {/* Screenshot thumbnails strip */}
           {screenshots.length > 0 && (
             <div className="bg-slate-900 border-t border-slate-700 px-3 py-2">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-slate-500 text-xs font-mono uppercase tracking-wider">Captured frames</span>
+                <a
+                  href={liveViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto text-slate-600 hover:text-slate-400 text-xs font-mono transition-colors"
+                >
+                  watch live ↗
+                </a>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {screenshots.map((s, i) => (
@@ -372,17 +402,6 @@ export function TitleSearchClient() {
                   </button>
                 ))}
               </div>
-              {/* Expanded screenshot view when a thumbnail is clicked */}
-              {activeScreenshot && (
-                <div className="mt-2 rounded-lg overflow-hidden border border-slate-700">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`data:image/jpeg;base64,${activeScreenshot.data}`}
-                    alt={activeScreenshot.label}
-                    className="w-full max-h-[320px] object-contain object-top bg-slate-950"
-                  />
-                </div>
-              )}
             </div>
           )}
         </motion.div>

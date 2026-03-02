@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { lookupCounty } from '@/lib/agents/title-search/property-lookup';
 import { retrieveCountyRecords } from '@/lib/agents/title-search/record-retrieval';
 import { runAnalysisPipeline } from '@/lib/agents/title-search/analysis';
@@ -21,6 +20,7 @@ async function streamNovaActSearch(
   countyName: string,
   send: (data: any) => void,
   collectedScreenshots: ScreenshotRecord[],
+  timeoutMs = 120_000,  // 120s max — enough to get search + first screenshot + partial deed nav
 ): Promise<any | null> {
   const sidecarUrl = process.env.NOVA_ACT_SERVICE_URL;
   if (!sidecarUrl) {
@@ -29,19 +29,29 @@ async function streamNovaActSearch(
   }
 
   let upstreamRes: Response;
+  const controller = new AbortController();
+  // Abort after timeoutMs so we don't hang the whole request
+  const timer = setTimeout(() => {
+    controller.abort();
+    send({ type: 'log', step: 'retrieval', message: `Nova Act browser stream collected — proceeding with AI analysis.` });
+  }, timeoutMs);
+
   try {
     upstreamRes = await fetch(`${sidecarUrl}/search-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, county: countyName }),
-      signal: AbortSignal.timeout(270_000),
+      signal: controller.signal,
     });
   } catch (err: any) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') return null;
     send({ type: 'log', step: 'retrieval', message: `Browser agent sidecar unavailable (${err.message}) — using fallback mode.` });
     return null;
   }
 
   if (!upstreamRes.ok || !upstreamRes.body) {
+    clearTimeout(timer);
     send({ type: 'log', step: 'retrieval', message: `Sidecar returned HTTP ${upstreamRes.status} — using fallback mode.` });
     return null;
   }
@@ -51,38 +61,47 @@ async function streamNovaActSearch(
   let buffer = '';
   let resultData: any = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split('\n\n');
-    buffer = parts.pop() ?? '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
 
-    for (const part of parts) {
-      const line = part.trim();
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const evt = JSON.parse(line.slice(6));
-        if (evt.type === 'progress') {
-          send({ type: 'log', step: evt.step, message: evt.message });
-        } else if (evt.type === 'live_view') {
-          send({ type: 'live_view', url: evt.url });
-        } else if (evt.type === 'screenshot') {
-          // Forward to frontend AND collect for DB persistence
-          send({ type: 'screenshot', label: evt.label, step: evt.step, data: evt.data });
-          collectedScreenshots.push({ label: evt.label, step: evt.step, data: evt.data });
-        } else if (evt.type === 'result') {
-          resultData = evt.data;
-        }
-      } catch { /* ignore parse errors */ }
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.type === 'progress') {
+            send({ type: 'log', step: evt.step, message: evt.message });
+          } else if (evt.type === 'live_view') {
+            send({ type: 'live_view', url: evt.url });
+          } else if (evt.type === 'screenshot') {
+            // Forward to frontend AND collect for DB persistence
+            send({ type: 'screenshot', label: evt.label, step: evt.step, data: evt.data });
+            collectedScreenshots.push({ label: evt.label, step: evt.step, data: evt.data });
+          } else if (evt.type === 'result') {
+            resultData = evt.data;
+          }
+        } catch { /* ignore parse errors */ }
+      }
     }
+  } catch (err: any) {
+    if (err.name !== 'AbortError') {
+      send({ type: 'log', step: 'retrieval', message: `Browser stream ended: ${err.message}` });
+    }
+  } finally {
+    clearTimeout(timer);
+    reader.cancel().catch(() => {});
   }
 
   return resultData;
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
+  const userId: string | null = null; // Clerk auth disabled when NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set
   const { address } = await req.json();
   const encoder = new TextEncoder();
 
@@ -119,35 +138,44 @@ export async function POST(req: NextRequest) {
         let sourceType: DataSourceType = 'web_scrape';
         const citations: SourceCitation[] = [];
 
-        // Start web search immediately (completes in ~5-12s, returns real owner data)
-        if (hasWebSearch) {
-          send({ type: 'log', step: 'retrieval', message: `Querying ${county.name} tax office + web search...` });
-          docs = await retrieveCountyRecords(address, county.name);
-          for (const d of docs) {
-            if (d.citation) citations.push(d.citation);
-          }
-          send({ type: 'log', step: 'retrieval', message: `Analyzed ${docs.length} property records.` });
+        // Run Nova Act browser agent AND web search in parallel for the best demo experience.
+        // Nova Act streams live screenshots of the county portal; web search provides fallback data.
+        send({ type: 'log', step: 'retrieval', message: `Launching Nova Act browser agent for ${county.name} recorder...` });
+
+        // Kick off both in parallel
+        const novaActPromise = streamNovaActSearch(address, county.name, send, collectedScreenshots);
+        const webSearchPromise = hasWebSearch
+          ? (async () => {
+              send({ type: 'log', step: 'retrieval', message: `Also querying ${county.name} tax office + web search...` });
+              const webDocs = await retrieveCountyRecords(address, county.name);
+              send({ type: 'log', step: 'retrieval', message: `Web search found ${webDocs.length} record(s).` });
+              return webDocs;
+            })()
+          : Promise.resolve([] as any[]);
+
+        // Wait for both
+        const [novaResult, webDocs] = await Promise.all([novaActPromise, webSearchPromise]);
+        novaActData = novaResult;
+
+        if (novaActData) {
+          sourceType = 'nova_act';
+          const citation = createCitation('nova_act', `${county.name} Official Records — Browser Agent`, county.recorderUrl || '', {
+            documentType: 'County Recorder Official Records',
+          });
+          citations.push(citation);
+          docs = [{
+            source: 'County Recorder Browser Agent',
+            url: county.recorderUrl || '',
+            text: JSON.stringify(novaActData),
+            type: 'NovaAct',
+            citation,
+          }];
         }
 
-        // Try browser agent only if web search found nothing
-        if (docs.length === 0) {
-          send({ type: 'log', step: 'retrieval', message: `Launching browser agent for ${county.name} recorder...` });
-          novaActData = await streamNovaActSearch(address, county.name, send, collectedScreenshots);
-          
-          if (novaActData) {
-            sourceType = 'nova_act';
-            const citation = createCitation('nova_act', `${county.name} Official Records — Browser Agent`, county.recorderUrl || '', {
-              documentType: 'County Recorder Official Records',
-            });
-            citations.push(citation);
-            docs = [{
-              source: 'County Recorder Browser Agent',
-              url: county.recorderUrl || '',
-              text: JSON.stringify(novaActData),
-              type: 'NovaAct',
-              citation,
-            }];
-          }
+        // Merge web search docs (as supplemental sources)
+        for (const d of webDocs) {
+          if (d.citation) citations.push(d.citation);
+          docs.push(d);
         }
 
         if (docs.length === 0) {

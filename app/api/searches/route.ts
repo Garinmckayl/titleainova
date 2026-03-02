@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { getRecentSearches, getSearch } from '@/lib/turso';
+import { getRecentSearches, getSearch, deleteSearch } from '@/lib/turso';
 
 export const runtime = 'nodejs';
 
@@ -26,11 +26,25 @@ export async function GET(req: NextRequest) {
 
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 20, 50) : 20;
-    // Pass null userId to get all recent searches (for demo/guest access)
     const rows = await getRecentSearches(limit, userId ?? undefined);
     return NextResponse.json({ success: true, data: rows });
   } catch (err: any) {
     console.error('[/api/searches]', err);
+    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const idParam = searchParams.get('id');
+  if (!idParam) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+  const id = parseInt(idParam, 10);
+  if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  try {
+    await deleteSearch(id);
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('[/api/searches DELETE]', err);
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
   }
 }

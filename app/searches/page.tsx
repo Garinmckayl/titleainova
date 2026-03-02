@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import {
   Building2, MapPin, ArrowRight, Clock, FileText, AlertTriangle,
   CheckCircle2, Loader2, History, ChevronDown, ShieldCheck, Camera, X,
-  Share2, Link2
+  Share2, Link2, Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -77,8 +77,9 @@ function SourceBadge({ source }: { source: string | null }) {
 }
 
 /* ─── Detail view for a single search ────────────────────────── */
-function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void }) {
+function SearchDetail({ row, onClose, onDelete }: { row: SearchRow; onClose: () => void; onDelete: (id: number) => void }) {
   const [copied, setCopied] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
 
   const getShareUrl = () => {
     const base = process.env.NEXT_PUBLIC_APP_URL || 'https://www.thebigfourai.com';
@@ -90,6 +91,17 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this search from history?')) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/searches?id=${row.id}`, { method: 'DELETE' });
+      onDelete(row.id);
+    } catch {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -121,6 +133,10 @@ function SearchDetail({ row, onClose }: { row: SearchRow; onClose: () => void })
           <Button onClick={handleShare} variant="outline" size="sm" className="gap-1.5 text-yellow-700 border-yellow-200 hover:bg-yellow-50">
             {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Share2 className="h-3.5 w-3.5" />}
             {copied ? 'Link Copied!' : 'Share Report'}
+          </Button>
+          <Button onClick={handleDelete} disabled={deleting} variant="outline" size="sm" className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Delete
           </Button>
           <Button onClick={onClose} variant="outline" size="sm" className="gap-1.5">
             <X className="h-3.5 w-3.5" /> Back
@@ -406,6 +422,11 @@ export default function SearchesPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleDelete = (id: number) => {
+    setSearches(prev => prev.filter(s => s.id !== id));
+    setSelected(null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#fefce8] to-white">
       <Navbar />
@@ -464,7 +485,7 @@ export default function SearchesPage() {
       {/* Detail view OR list */}
       <AnimatePresence mode="wait">
         {selected ? (
-          <SearchDetail key={selected.id} row={selected} onClose={() => setSelected(null)} />
+          <SearchDetail key={selected.id} row={selected} onClose={() => setSelected(null)} onDelete={handleDelete} />
         ) : (
           !loading && !error && searches.length > 0 && (
             <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -599,6 +620,19 @@ export default function SearchesPage() {
                                 title="Share report link"
                               >
                                 <Share2 className="h-4 w-4" />
+                              </button>
+
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm('Delete this search from history?')) return;
+                                  await fetch(`/api/searches?id=${row.id}`, { method: 'DELETE' });
+                                  handleDelete(row.id);
+                                }}
+                                className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Delete search"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </button>
 
                               <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all" />

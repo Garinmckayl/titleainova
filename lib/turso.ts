@@ -194,6 +194,15 @@ export async function saveSearch(
   return rs.rows[0].id as number;
 }
 
+export async function deleteSearch(id: number): Promise<void> {
+  await ensureTable();
+  const db = getClient();
+  await db.execute({
+    sql: `DELETE FROM title_searches WHERE id = ?`,
+    args: [id],
+  });
+}
+
 export async function getRecentSearches(limit = 20, userId: string | null = null): Promise<TitleSearchRow[]> {
   await ensureTable();
   const db = getClient();

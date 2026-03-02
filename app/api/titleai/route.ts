@@ -250,6 +250,7 @@ export async function POST(req: NextRequest) {
         } catch (err: any) {
           console.error('[Turso] saveSearch failed:', err);
           // Still send the result even if DB save fails
+          send({ type: 'log', step: 'complete', message: `[DB] Save failed: ${err.message}` });
           send({ type: 'result', data: { ...reportData, pdfBase64, saveError: err.message } });
         }
       } catch (e: any) {

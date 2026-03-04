@@ -1,0 +1,43 @@
+{
+  "name": "Title AI",
+  "short_name": "Title AI",
+  "description": "Instant AI-powered property title search. Chain of title, lien detection, risk assessment in minutes.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a1628",
+  "theme_color": "#0a1628",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "finance", "real-estate"],
+  "lang": "en",
+  "dir": "ltr",
+  "shortcuts": [
+    {
+      "name": "New Title Search",
+      "short_name": "Search",
+      "description": "Run a new property title search",
+      "url": "/titleai",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Search History",
+      "short_name": "History",
+      "description": "View past title searches",
+      "url": "/searches",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
